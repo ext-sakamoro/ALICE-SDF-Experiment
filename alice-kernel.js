@@ -226,7 +226,11 @@ function updateMovement(dt){
   // ボディ衝突 → 水平方向に押し戻し
   cam.pos[0]=body.x;
   cam.pos[2]=body.z;
-  cam.pos[1]=Math.max(ny,EYE_HEIGHT);
+
+  // カメラY: EMA（指数移動平均）で滑らかに補間（ドローン型）
+  var targetY=Math.max(ny,EYE_HEIGHT);
+  var emaAlpha=1-Math.exp(-dt*8.0); // 時定数 ~0.125秒
+  cam.pos[1]+=(targetY-cam.pos[1])*emaAlpha;
 
   // 最低高さ保証
   if(cam.pos[1]<EYE_HEIGHT){cam.pos[1]=EYE_HEIGHT;cam.vy=0;}
