@@ -34,7 +34,130 @@ function updateTeleport(dt){if(!teleport)return false;teleport.t+=dt*1.2;var s=s
 navEl.querySelectorAll('button').forEach(function(btn){btn.addEventListener('click',function(){startTeleport(btn.dataset.tp);resumeEl.style.display='none';setTimeout(enterLock,80);});});
 
 function updateCameraVectors(){var cp=Math.cos(cam.pitch),sp=Math.sin(cam.pitch),cy=Math.cos(cam.yaw),sy=Math.sin(cam.yaw);cam.fwd=[sy*cp,sp,-cy*cp];cam.right=[cy,0,sy];cam.up=[-sy*sp,cp,cy*sp];}
-function updateMovement(dt){var mx=0,mz=0;var fx=Math.sin(cam.yaw),fz=-Math.cos(cam.yaw),rx=Math.cos(cam.yaw),rz=Math.sin(cam.yaw);if(keys['w']||keys['arrowup']){mx+=fx;mz+=fz;}if(keys['s']||keys['arrowdown']){mx-=fx;mz-=fz;}if(keys['a']||keys['arrowleft']){mx-=rx;mz-=rz;}if(keys['d']||keys['arrowright']){mx+=rx;mz+=rz;}var len=Math.sqrt(mx*mx+mz*mz);if(len>0){mx/=len;mz/=len;cam.pos[0]+=mx*MOVE_SPEED*dt;cam.pos[2]+=mz*MOVE_SPEED*dt;}if(keys[' '])cam.vy=FLY_SPEED;else cam.vy-=GRAVITY*dt;cam.pos[1]+=cam.vy*dt;if(cam.pos[1]<EYE_HEIGHT){cam.pos[1]=EYE_HEIGHT;cam.vy=0;}}
+
+// ═══ JS側SDF — 全域CCD物理判定 (質量と全域CCDの法) ═══
+var COL_RADIUS=0.3,COL_STEPS=4;
+
+function jsSdBox(px,py,pz,bx,by,bz){
+  var qx=Math.abs(px)-bx,qy=Math.abs(py)-by,qz=Math.abs(pz)-bz;
+  var mx=Math.max(qx,0),my=Math.max(qy,0),mz=Math.max(qz,0);
+  return Math.sqrt(mx*mx+my*my+mz*mz)+Math.min(Math.max(qx,Math.max(qy,qz)),0);
+}
+function jsSdRoundBox(px,py,pz,bx,by,bz,r){
+  return jsSdBox(px,py,pz,bx-r,by-r,bz-r)-r;
+}
+function jsSdSphere(px,py,pz,r){
+  return Math.sqrt(px*px+py*py+pz*pz)-r;
+}
+function jsSdCylinder(px,py,pz,h,r){
+  var dl=Math.sqrt(px*px+pz*pz);
+  var dx=Math.abs(dl)-r,dy=Math.abs(py)-h;
+  var mx2=Math.max(dx,0),my2=Math.max(dy,0);
+  return Math.min(Math.max(dx,dy),0)+Math.sqrt(mx2*mx2+my2*my2);
+}
+
+function jsMap(x,y,z){
+  // 地面
+  var d=y;
+  // Lobby base
+  d=Math.min(d,jsSdRoundBox(x,y-0.22,z,7.5,0.22,7.5,0.1));
+  // Lobby柱×4
+  for(var i=0;i<4;i++){
+    var ang=i*1.5707963;var cx=Math.cos(ang)*5.5,cz=Math.sin(ang)*5.5;
+    d=Math.min(d,jsSdRoundBox(x-cx,y-3.5,z-cz,0.25,3.5,0.25,0.008));
+    d=Math.min(d,jsSdCylinder(x-cx,y-0.12,z-cz,0.12,0.35));
+    d=Math.min(d,jsSdCylinder(x-cx,y-6.88,z-cz,0.12,0.35));
+  }
+  // Energy Orb (球体簡易判定)
+  d=Math.min(d,jsSdSphere(x,y-5.2,z,2.2));
+  // Services base + towers
+  d=Math.min(d,jsSdRoundBox(x,y-0.14,z+35,11.5,0.14,4.5,0.08));
+  for(var i=0;i<4;i++){
+    var sx=i*4-6,sh=5.2+Math.sin(i*1.5)*0.4;
+    d=Math.min(d,jsSdRoundBox(x-sx,y-sh*0.5,z+35,1.55,sh*0.5,0.28,0.12));
+  }
+  d=Math.min(d,jsSdSphere(x,y-6.5,z+35,1.8));
+  // Research wall + base
+  d=Math.min(d,jsSdRoundBox(x-35,y-4.8,z,0.35,4.8,8.5,0.15));
+  d=Math.min(d,jsSdRoundBox(x-35,y-0.14,z,2.8,0.14,10.5,0.08));
+  d=Math.min(d,jsSdSphere(x-35,y-5.5,z,1.6));
+  // Stats base + pedestals
+  d=Math.min(d,jsSdRoundBox(x,y-0.14,z-35,11.5,0.14,4.5,0.08));
+  for(var i=0;i<4;i++){
+    var stx=i*4-6;
+    d=Math.min(d,jsSdRoundBox(x-stx,y-1.6,z-35,1.05,1.6,1.05,0.1));
+  }
+  d=Math.min(d,jsSdSphere(x,y-5.0,z-35,1.6));
+  // Contact base + pillars
+  d=Math.min(d,jsSdRoundBox(x+35,y-0.14,z,6.5,0.14,6.5,0.08));
+  for(var i=0;i<2;i++){
+    var zz=i*10-5;
+    d=Math.min(d,jsSdRoundBox(x+35,y-3.5,z-zz,0.25,3.5,0.25,0.008));
+  }
+  d=Math.min(d,jsSdSphere(x+35,y-5.2,z,1.8));
+  // Glass dome
+  d=Math.min(d,jsSdSphere(x,y-12.5,z,3.0));
+  return d;
+}
+
+// SDF勾配（法線）算出
+function jsMapNormal(x,y,z){
+  var e=0.05;
+  var dx=jsMap(x+e,y,z)-jsMap(x-e,y,z);
+  var dy=jsMap(x,y+e,z)-jsMap(x,y-e,z);
+  var dz=jsMap(x,y,z+e)-jsMap(x,y,z-e);
+  var len=Math.sqrt(dx*dx+dy*dy+dz*dz);
+  if(len<0.0001)return{x:0,y:1,z:0};
+  var il=1/len;
+  return{x:dx*il,y:dy*il,z:dz*il};
+}
+
+// SDF CCD衝突解決
+function sdfResolve(px,py,pz){
+  for(var i=0;i<COL_STEPS;i++){
+    var d=jsMap(px,py,pz);
+    if(d>=COL_RADIUS)break;
+    var n=jsMapNormal(px,py,pz);
+    var push=COL_RADIUS-d+0.01;
+    px+=n.x*push;py+=n.y*push;pz+=n.z*push;
+  }
+  return{x:px,y:py,z:pz};
+}
+
+function updateMovement(dt){
+  var mx=0,mz=0;
+  var fx=Math.sin(cam.yaw),fz=-Math.cos(cam.yaw),rx=Math.cos(cam.yaw),rz=Math.sin(cam.yaw);
+  if(keys['w']||keys['arrowup']){mx+=fx;mz+=fz;}
+  if(keys['s']||keys['arrowdown']){mx-=fx;mz-=fz;}
+  if(keys['a']||keys['arrowleft']){mx-=rx;mz-=rz;}
+  if(keys['d']||keys['arrowright']){mx+=rx;mz+=rz;}
+  var len=Math.sqrt(mx*mx+mz*mz);
+  if(len>0){mx/=len;mz/=len;}
+
+  // 新位置の候補
+  var nx=cam.pos[0]+mx*MOVE_SPEED*dt;
+  var nz=cam.pos[2]+mz*MOVE_SPEED*dt;
+
+  // 垂直方向
+  if(keys[' '])cam.vy=FLY_SPEED;else cam.vy-=GRAVITY*dt;
+  var ny=cam.pos[1]+cam.vy*dt;
+
+  // SDF CCD: 足元(+0.1)とボディ(EYE_HEIGHT)の2点で衝突解決
+  var foot=sdfResolve(nx,ny-EYE_HEIGHT+0.1,nz);
+  var body=sdfResolve(nx,ny,nz);
+
+  // 足元が押し上げられた場合 → 地面に乗る
+  var footY=foot.y+EYE_HEIGHT-0.1;
+  if(footY>ny){ny=footY;cam.vy=0;}
+
+  // ボディ衝突 → 水平方向に押し戻し
+  cam.pos[0]=body.x;
+  cam.pos[2]=body.z;
+  cam.pos[1]=Math.max(ny,EYE_HEIGHT);
+
+  // 最低高さ保証
+  if(cam.pos[1]<EYE_HEIGHT){cam.pos[1]=EYE_HEIGHT;cam.vy=0;}
+}
 
 // ── Day/Night Cycle ──────────────────────────────────
 var DAY_CYCLE=180; // 3 minutes for full day
