@@ -87,18 +87,20 @@ float terrainHeight(vec2 xz){
   float hDesert=fbm(vec2(windProj*3.0,windPerp*0.8))*0.8+vnoise(xz*0.06)*0.5;
   // 岩石: Voronoi侵食
   float hRock=voronoiErosion(xz*0.15)*2.2;
-  // 草原: FBM起伏 + sdCylinderブレード高さ
+  // 草原: FBM起伏 + sdCylinderブレード高さ (8本/m, 高さ0.25)
   float hGrass=fbm(xz*0.1)*1.0+vnoise(xz*0.2)*0.25;
-  // sdCylinderブレード: Y軸に突き出す草の高さ (O(1))
-  vec2 gCell=floor(xz*30.0);
-  vec2 gPos=fract(xz*30.0)-0.5-vec2(hash(gCell)-0.5,hash(gCell+50.0)-0.5)*0.25;
+  vec2 gCell=floor(xz*8.0);
+  vec2 gPos=fract(xz*8.0)-0.5-vec2(hash(gCell)-0.5,hash(gCell+50.0)-0.5)*0.3;
   float gAng=hash(gCell+77.0)*PI;
   vec2 gDir=vec2(cos(gAng),sin(gAng));
   vec2 gPerp=vec2(-gDir.y,gDir.x);
   float gPd=dot(gPos,gPerp);
   float gAd=dot(gPos,gDir);
-  float bladeH=exp(-gPd*gPd*120.0)*smoothstep(0.45,0.0,abs(gAd));
-  hGrass+=bladeH*0.06*w.w; // 草原ウェイト分だけ加算
+  // 薄いブレード形状: 幅狭く(exp*800)、長さ方向はsmoothstep
+  float bladeH=exp(-gPd*gPd*800.0)*smoothstep(0.4,0.0,abs(gAd));
+  // ブレード毎の高さばらつき
+  bladeH*=mix(0.6,1.0,hash(gCell+99.0));
+  hGrass+=bladeH*0.25*w.w;
   float h=w.x*hSnow+w.y*hDesert+w.z*hRock+w.w*hGrass;
   // 建築エリア平坦化 (base平板と自然に接続)
   float bFlat=smoothstep(10.0,6.0,length(xz));
@@ -258,34 +260,28 @@ Mat getMat(float id,vec3 p){
     vec3 rockStrata=mix(vec3(0.18,0.16,0.12),vec3(0.28,0.24,0.22),vr.z);
     vec3 rockAlb=mix(rockStrata*0.6,rockStrata+rockN,rockEdge);
     float rockRough=0.55+vnoise(p.xz*12.0)*0.15+(1.0-rockEdge)*0.15;
-    // ── 草原 (Stats): 密生草原 + sdCylinder微細テクスチャ + 風波明暗 ──
-    // 密生ベース: 全面がオリーブ〜黄緑の草で覆われている
-    vec3 grassBase=vec3(0.14,0.19,0.06); // 暗めオリーブ緑
-    // タフト変調 (低周波): 株の高さ/密度のうねり
-    float tuft=vnoise(p.xz*2.5)*0.5+0.5;
-    // 位置ベースの草丈変調 (時間アニメなし = 揺れなし)
-    float windLean=vnoise(p.xz*0.4)*0.5+0.25;
-    vec3 leanDark=vec3(0.1,0.15,0.04);
-    vec3 leanLight=vec3(0.22,0.24,0.1);
-    vec3 grassAlb=mix(leanDark,leanLight,windLean);
-    grassAlb=mix(grassBase,grassAlb,tuft*0.6+0.4);
-    // sdCylinder微細テクスチャ: 密生緑の上にブレード構造の微かな明暗を載せる
-    vec2 mgc=floor(p.xz*30.0);
-    vec2 mgp=fract(p.xz*30.0)-0.5-vec2(hash(mgc)-0.5,hash(mgc+50.0)-0.5)*0.25;
+    // ── 草原 (Stats): sdCylinder 8本/m ブレード描画 ──
+    // terrainHeightと同じ8本/mグリッドでブレード近接度を計算
+    vec2 mgc=floor(p.xz*8.0);
+    vec2 mgp=fract(p.xz*8.0)-0.5-vec2(hash(mgc)-0.5,hash(mgc+50.0)-0.5)*0.3;
     float mba=hash(mgc+77.0)*PI;
     vec2 mbd=vec2(cos(mba),sin(mba));
     vec2 mbp=vec2(-mbd.y,mbd.x);
     float mPerp=dot(mgp,mbp);
     float mAlong=dot(mgp,mbd);
-    // ブレード近接度: 密生なので幅広め (exp係数小さく)、重なり合う
-    float bladeProx=exp(-mPerp*mPerp*120.0)*smoothstep(0.45,0.0,abs(mAlong));
-    float bladeTip=SAT(mAlong*2.0+0.6);
-    // ブレード上: 微かに明るい緑、先端で微かに黄ばむ (5-10%変調)
-    grassAlb+=bladeProx*mix(vec3(0.01,0.02,0.005),vec3(0.03,0.01,-0.01),bladeTip);
-    // ブレード間の微かな陰: 密生の隙間
-    grassAlb*=mix(0.92,1.0,bladeProx);
-    float grassRough=0.32+windLean*0.06-bladeProx*0.05;
-    float grassSSS=0.3+bladeProx*0.15+tuft*0.05;
+    float bladeProx=exp(-mPerp*mPerp*800.0)*smoothstep(0.4,0.0,abs(mAlong));
+    bladeProx*=mix(0.6,1.0,hash(mgc+99.0)); // 高さばらつき同期
+    float bladeTip=SAT(mAlong*2.5+0.6); // 根元0→先端1
+    // ブレード上: 鮮やかな緑、根元暗め→先端黄緑
+    vec3 bladeCol=mix(vec3(0.06,0.18,0.03),vec3(0.2,0.28,0.06),bladeTip);
+    // ブレード間: 暗い地面
+    vec3 gapCol=vec3(0.04,0.08,0.02);
+    // ブレード毎の色相ばらつき
+    float hueV=hash(mgc+400.0)*0.06;
+    bladeCol.g+=hueV; bladeCol.r-=hueV*0.3;
+    vec3 grassAlb=mix(gapCol,bladeCol,bladeProx);
+    float grassRough=mix(0.55,0.22,bladeProx); // ブレード面はキューティクルで低ラフネス
+    float grassSSS=bladeProx*0.45; // 薄葉透過光
     // ── バイオームブレンド ──
     m.albedo=bw.x*snowAlb+bw.y*sandAlb+bw.z*rockAlb+bw.w*grassAlb;
     m.metallic=bw.z*0.12;
@@ -840,8 +836,7 @@ vec3 skyColor(vec3 rd,vec3 sunDir,vec3 moonDir,float dayF){
 void main(){
   vec2 uv=(gl_FragCoord.xy-0.5*uRes)/uRes.y;
   vec3 ro=uCamPos;
-  vec2 sUV=uv+uShake;
-  if(uImpact>0.1){sUV+=vec2(sin(uv.y*35.0+uTime*8.0),cos(uv.x*28.0+uTime*6.0))*uImpact*0.012;}
+  vec2 sUV=uv; // uShake/uImpact UV歪み無効化
   vec3 rd=normalize(uCamFwd+sUV.x*uCamRight+sUV.y*uCamUp);
 
   // ── Time of Day ──
@@ -901,20 +896,19 @@ void main(){
       float veZ=voronoiErosion((p.xz+e.yx)*0.15);
       tn.x+=bw.z*(ve0-veX)*20.0;
       tn.z+=bw.z*(ve0-veZ)*20.0;
-      // ── 草原: sdCylinderブレード法線 (静的、揺れなし) ──
-      // terrainHeightと同じグリッドでブレード法線を算出
-      vec2 gc1=floor(p.xz*30.0);
-      vec2 gp1=fract(p.xz*30.0)-0.5-vec2(hash(gc1)-0.5,hash(gc1+50.0)-0.5)*0.25;
+      // ── 草原: sdCylinderブレード法線 8本/m (静的) ──
+      vec2 gc1=floor(p.xz*8.0);
+      vec2 gp1=fract(p.xz*8.0)-0.5-vec2(hash(gc1)-0.5,hash(gc1+50.0)-0.5)*0.3;
       float ba1=hash(gc1+77.0)*PI;
       vec2 bd1=vec2(cos(ba1),sin(ba1));
       vec2 bp1=vec2(-bd1.y,bd1.x);
       float perpD1=dot(gp1,bp1);
       float alongD1=dot(gp1,bd1);
-      float bx1=exp(-perpD1*perpD1*120.0)*smoothstep(0.45,0.0,abs(alongD1));
-      // ブレード直交方向の法線 (草の稜線)
+      float bx1=exp(-perpD1*perpD1*800.0)*smoothstep(0.4,0.0,abs(alongD1));
+      bx1*=mix(0.6,1.0,hash(gc1+99.0));
       vec2 bn1=bp1*sign(perpD1+0.0001);
-      tn.x+=bw.w*bn1.x*bx1*1.5;
-      tn.z+=bw.w*bn1.y*bx1*1.5;
+      tn.x+=bw.w*bn1.x*bx1*3.0;
+      tn.z+=bw.w*bn1.y*bx1*3.0;
       n=normalize(tn);
     }
     Mat mat=getMat(hit.y,p);
