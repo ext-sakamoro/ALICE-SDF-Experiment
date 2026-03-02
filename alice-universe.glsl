@@ -248,17 +248,44 @@ Mat getMat(float id,vec3 p){
     vec3 rockStrata=mix(vec3(0.18,0.16,0.12),vec3(0.28,0.24,0.22),vr.z);
     vec3 rockAlb=mix(rockStrata*0.6,rockStrata+rockN,rockEdge);
     float rockRough=0.55+vnoise(p.xz*12.0)*0.15+(1.0-rockEdge)*0.15;
-    // ── 草原 (Stats): 均一緑ベース + 法線がブレード構造を描く ──
-    float grassN=vnoise(p.xz*3.0)*0.05;
-    vec3 grassAlb=vec3(0.1+grassN*0.5,0.32+grassN,0.06+grassN*0.3);
-    // 低周波ノイズで土の隙間をわずかに
-    float soilGap=smoothstep(0.45,0.3,vnoise(p.xz*12.0));
-    grassAlb=mix(grassAlb,vec3(0.06,0.08,0.03),soilGap*0.2);
-    // ブレード先端の枯れ色
-    float grassTip=SAT(vnoise(p.xz*8.0)*1.5-0.3);
-    grassAlb=mix(grassAlb,vec3(0.3,0.26,0.12),grassTip*0.15);
-    float grassRough=0.35+vnoise(p.xz*10.0)*0.1;
-    float grassSSS=0.35;
+    // ── 草原 (Stats): sdCylinder L-System ブレード描画 O(1) ──
+    // sdCylinder近接度をマテリアルレベルで計算 (ブレードを「見せる」)
+    // スケール1: 微細ブレード (24本/m)
+    vec2 mgc1=floor(p.xz*24.0);
+    vec2 mgp1=fract(p.xz*24.0)-0.5-vec2(hash(mgc1)-0.5,hash(mgc1+50.0)-0.5)*0.3;
+    float mba1=hash(mgc1+77.0)*PI;
+    vec2 mbd1=vec2(cos(mba1),sin(mba1));
+    vec2 mbp1=vec2(-mbd1.y,mbd1.x);
+    float mPerp1=dot(mgp1,mbp1);
+    float mAlong1=dot(mgp1,mbd1);
+    float mbx1=exp(-mPerp1*mPerp1*600.0)*smoothstep(0.4,0.0,abs(mAlong1));
+    float mTip1=SAT(mAlong1*2.5+0.5); // 根元0→先端1
+    // スケール2: 大タフト (8本/m)
+    vec2 mgc2=floor(p.xz*8.0);
+    vec2 mgp2=fract(p.xz*8.0)-0.5-vec2(hash(mgc2+200.0)-0.5,hash(mgc2+250.0)-0.5)*0.3;
+    float mba2=hash(mgc2+177.0)*PI;
+    vec2 mbd2=vec2(cos(mba2),sin(mba2));
+    vec2 mbp2=vec2(-mbd2.y,mbd2.x);
+    float mPerp2=dot(mgp2,mbp2);
+    float mAlong2=dot(mgp2,mbd2);
+    float mbx2=exp(-mPerp2*mPerp2*200.0)*smoothstep(0.45,0.0,abs(mAlong2));
+    float mTip2=SAT(mAlong2*2.0+0.5);
+    // 合成ブレード近接度
+    float bladeMask=SAT(mbx1+mbx2*0.6); // 0=土壌, 1=ブレード上
+    float tipGrad=mix(mTip1,mTip2,0.4); // along方向グラデーション
+    // アルベド: 土壌 vs ブレード (根元暗緑→先端枯れ色)
+    vec3 soilAlb=vec3(0.06,0.05,0.03); // 茶色い土壌
+    vec3 bladeBase=vec3(0.08,0.28,0.05); // 根元: 暗い緑
+    vec3 bladeTip=vec3(0.25,0.22,0.08); // 先端: 枯れ色
+    vec3 bladeAlb=mix(bladeBase,bladeTip,tipGrad);
+    // ブレード毎の色相ばらつき (hash)
+    float hueVar=hash(mgc1+400.0)*0.08;
+    bladeAlb.g+=hueVar; bladeAlb.r-=hueVar*0.3;
+    vec3 grassAlb=mix(soilAlb,bladeAlb,bladeMask);
+    // ラフネス: ブレード面=蝋質キューティクル, 土壌=粗い土
+    float grassRough=mix(0.65,0.25,bladeMask);
+    // SSS: 薄い葉は光を透過, 土壌は不透過
+    float grassSSS=bladeMask*0.5;
     // ── バイオームブレンド ──
     m.albedo=bw.x*snowAlb+bw.y*sandAlb+bw.z*rockAlb+bw.w*grassAlb;
     m.metallic=bw.z*0.12;
