@@ -91,12 +91,12 @@ float terrainHeight(vec2 xz){
   float hGrass=fbm(xz*0.1)*1.0+vnoise(xz*0.2)*0.25;
   float h=w.x*hSnow+w.y*hDesert+w.z*hRock+w.w*hGrass;
   // 建築エリア平坦化 (base平板と自然に接続)
-  float flat=smoothstep(10.0,6.0,length(xz));
-  flat=max(flat,smoothstep(7.0,3.0,length(xz-vec2(0,-35))));
-  flat=max(flat,smoothstep(5.0,1.5,length(xz-vec2(35,0))));
-  flat=max(flat,smoothstep(7.0,3.0,length(xz-vec2(0,35))));
-  flat=max(flat,smoothstep(9.0,4.0,length(xz-vec2(-35,0))));
-  h*=1.0-flat*0.9;
+  float bFlat=smoothstep(10.0,6.0,length(xz));
+  bFlat=max(bFlat,smoothstep(7.0,3.0,length(xz-vec2(0,-35))));
+  bFlat=max(bFlat,smoothstep(5.0,1.5,length(xz-vec2(35,0))));
+  bFlat=max(bFlat,smoothstep(7.0,3.0,length(xz-vec2(0,35))));
+  bFlat=max(bFlat,smoothstep(9.0,4.0,length(xz-vec2(-35,0))));
+  h*=1.0-bFlat*0.9;
   return h;
 }
 
