@@ -87,8 +87,18 @@ float terrainHeight(vec2 xz){
   float hDesert=fbm(vec2(windProj*3.0,windPerp*0.8))*0.8+vnoise(xz*0.06)*0.5;
   // 岩石: Voronoi侵食
   float hRock=voronoiErosion(xz*0.15)*2.2;
-  // 草原: FBM起伏
+  // 草原: FBM起伏 + sdCylinderブレード高さ
   float hGrass=fbm(xz*0.1)*1.0+vnoise(xz*0.2)*0.25;
+  // sdCylinderブレード: Y軸に突き出す草の高さ (O(1))
+  vec2 gCell=floor(xz*30.0);
+  vec2 gPos=fract(xz*30.0)-0.5-vec2(hash(gCell)-0.5,hash(gCell+50.0)-0.5)*0.25;
+  float gAng=hash(gCell+77.0)*PI;
+  vec2 gDir=vec2(cos(gAng),sin(gAng));
+  vec2 gPerp=vec2(-gDir.y,gDir.x);
+  float gPd=dot(gPos,gPerp);
+  float gAd=dot(gPos,gDir);
+  float bladeH=exp(-gPd*gPd*120.0)*smoothstep(0.45,0.0,abs(gAd));
+  hGrass+=bladeH*0.06*w.w; // 草原ウェイト分だけ加算
   float h=w.x*hSnow+w.y*hDesert+w.z*hRock+w.w*hGrass;
   // 建築エリア平坦化 (base平板と自然に接続)
   float bFlat=smoothstep(10.0,6.0,length(xz));
@@ -253,10 +263,8 @@ Mat getMat(float id,vec3 p){
     vec3 grassBase=vec3(0.14,0.19,0.06); // 暗めオリーブ緑
     // タフト変調 (低周波): 株の高さ/密度のうねり
     float tuft=vnoise(p.xz*2.5)*0.5+0.5;
-    // 風による大スケール色シフト
-    vec2 mwD=vec2(cos(uTime*0.01),sin(uTime*0.01));
-    float windPhase=sin(dot(p.xz,mwD)*0.5-uTime*3.0)*0.5+0.5;
-    float windLean=windPhase*0.5+vnoise(p.xz*0.3+vec2(uTime*0.08,uTime*0.06))*0.12;
+    // 位置ベースの草丈変調 (時間アニメなし = 揺れなし)
+    float windLean=vnoise(p.xz*0.4)*0.5+0.25;
     vec3 leanDark=vec3(0.1,0.15,0.04);
     vec3 leanLight=vec3(0.22,0.24,0.1);
     vec3 grassAlb=mix(leanDark,leanLight,windLean);
@@ -893,31 +901,20 @@ void main(){
       float veZ=voronoiErosion((p.xz+e.yx)*0.15);
       tn.x+=bw.z*(ve0-veX)*20.0;
       tn.z+=bw.z*(ve0-veZ)*20.0;
-      // ── 草原: sdCylinder L-System 密生風波法線 (O(1)) ──
-      // ALICE-Physics ForceField::Directional: 統一風場 (wDは砂漠セクションで定義済み)
-      // ガスト波: 風向に伝播する草原の大うねり
-      float gGust=sin(dot(p.xz,wD)*0.5-uTime*3.0)*0.5+0.5;
-      float gTurb=vnoise(p.xz*0.3+vec2(uTime*0.08,uTime*0.06));
-      // 風傾斜量: 全草が風向に倒れる度合い (Ropeピン拘束)
-      float gWindStr=0.3+gGust*0.5+gTurb*0.15;
-      // スケール1: 微細ブレード (24本/m) — 個々のブレード角度差による微細法線
-      vec2 gc1=floor(p.xz*24.0);
+      // ── 草原: sdCylinderブレード法線 (静的、揺れなし) ──
+      // terrainHeightと同じグリッドでブレード法線を算出
+      vec2 gc1=floor(p.xz*30.0);
+      vec2 gp1=fract(p.xz*30.0)-0.5-vec2(hash(gc1)-0.5,hash(gc1+50.0)-0.5)*0.25;
       float ba1=hash(gc1+77.0)*PI;
-      float respond1=mix(1.2,0.8,hash(gc1+100.0)); // ブレード毎剛性差
-      vec2 bd1=vec2(cos(ba1),sin(ba1)); // ブレード方向
-      // 風で倒れた方向と元のブレード方向の合成
-      float bWind1=gWindStr*respond1;
-      vec2 tilt1=wD*bWind1+bd1*0.15; // 風が支配的、元方向が微細変調
-      // スケール2: タフト (3本/m) — 株単位の大きな揺れ
-      vec2 gc2=floor(p.xz*3.0);
-      float tuftH=hash(gc2+200.0)*0.4+0.6; // 株の高さ変調
-      float respond2=mix(1.0,0.5,hash(gc2+300.0));
-      float gGust2=sin(dot(p.xz,wD)*0.3-uTime*2.2)*0.5+0.5;
-      float bWind2=(0.35+gGust2*0.55)*respond2*tuftH;
-      vec2 tilt2=wD*bWind2;
-      // 合成: 大うねり + 微細ブレード差
-      tn.x+=bw.w*(tilt2.x*1.0+tilt1.x*0.6);
-      tn.z+=bw.w*(tilt2.y*1.0+tilt1.y*0.6);
+      vec2 bd1=vec2(cos(ba1),sin(ba1));
+      vec2 bp1=vec2(-bd1.y,bd1.x);
+      float perpD1=dot(gp1,bp1);
+      float alongD1=dot(gp1,bd1);
+      float bx1=exp(-perpD1*perpD1*120.0)*smoothstep(0.45,0.0,abs(alongD1));
+      // ブレード直交方向の法線 (草の稜線)
+      vec2 bn1=bp1*sign(perpD1+0.0001);
+      tn.x+=bw.w*bn1.x*bx1*1.5;
+      tn.z+=bw.w*bn1.y*bx1*1.5;
       n=normalize(tn);
     }
     Mat mat=getMat(hit.y,p);
