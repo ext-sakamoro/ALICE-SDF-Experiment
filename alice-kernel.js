@@ -92,14 +92,26 @@ function jsBiomeWeights(x,z){
   var inv=1/(wS+wD+wR+wG+0.001);
   return{s:wS*inv,d:wD*inv,r:wR*inv,g:wG*inv};
 }
-// JS terrainHeight (物理判定用)
+// JS smoothstep
+function jsSmoothstep(a,b,x){var t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);}
+// JS terrainHeight (物理判定用 — GLSL同期)
 function jsTerrainHeight(x,z){
   var w=jsBiomeWeights(x,z);
-  var hSnow=jsFbm(x*0.12,z*0.12)*1.2+jsVnoise(x*0.3,z*0.3)*0.3;
-  var hDesert=jsFbm(x*0.08,z*0.08)*0.6+jsVnoise(x*0.06,z*0.06)*0.4;
-  var hRock=jsVoronoiErosion(x*0.15,z*0.15)*1.8;
-  var hGrass=jsFbm(x*0.1,z*0.1)*0.8+jsVnoise(x*0.2,z*0.2)*0.2;
-  return w.s*hSnow+w.d*hDesert+w.r*hRock+w.g*hGrass;
+  // 雪: 山岳 + 尾根 + 積雪
+  var hSnow=jsFbm(x*0.08,z*0.08)*2.2+Math.max(jsVnoise(x*0.18,z*0.18)-0.4,0)*1.8+jsVnoise(x*0.3,z*0.3)*0.35;
+  // 砂漠: バルハン砂丘
+  var hDesert=jsFbm(x*0.08,z*0.08)*1.1+jsVnoise(x*0.05,z*0.05)*0.5;
+  // 岩石: Voronoi断崖
+  var hRock=jsVoronoiErosion(x*0.12,z*0.12)*2.6+jsVnoise(x*0.22,z*0.22)*0.4;
+  // 草原: 丘陵
+  var hGrass=jsFbm(x*0.08,z*0.08)*1.4+jsVnoise(x*0.18,z*0.18)*0.45;
+  var h=w.s*hSnow+w.d*hDesert+w.r*hRock+w.g*hGrass;
+  // 建物エリア平坦化 (チェビシェフ距離)
+  var ax=Math.abs(x),az=Math.abs(z);
+  var fade=jsSmoothstep(8,20,Math.max(ax,az));
+  var blds=[[0,-35],[35,0],[0,35],[-35,0]];
+  for(var i=0;i<4;i++){var dx=Math.abs(x-blds[i][0]),dz=Math.abs(z-blds[i][1]);fade*=jsSmoothstep(5,14,Math.max(dx,dz));}
+  return h*fade;
 }
 
 function jsSdBox(px,py,pz,bx,by,bz){
