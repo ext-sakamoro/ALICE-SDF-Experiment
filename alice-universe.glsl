@@ -868,19 +868,21 @@ void main(){
       float ripGrad=cos(wP*25.0)*0.075;
       tn.x+=bw.y*ripGrad*wD.x;
       tn.z+=bw.y*ripGrad*wD.y;
-      // ── 岩石: Voronoi侵食SDF勾配法線 ──
+      // ── 岩石: Voronoi侵食SDF勾配法線 (距離LOD付き) ──
+      float rockFade=smoothstep(50.0,20.0,t);
       float ve0=voronoiErosion(p.xz*0.15);
       float veX=voronoiErosion((p.xz+e)*0.15);
       float veZ=voronoiErosion((p.xz+e.yx)*0.15);
-      tn.x+=bw.z*(ve0-veX)*20.0;
-      tn.z+=bw.z*(ve0-veZ)*20.0;
-      // ── 草原: sdCylinder L-System法線摂動 (O(1)) ──
+      tn.x+=bw.z*(ve0-veX)*20.0*rockFade;
+      tn.z+=bw.z*(ve0-veZ)*20.0*rockFade;
+      // ── 草原: sdCylinder L-System法線摂動 (距離LOD付き) ──
+      float grassFade=smoothstep(30.0,10.0,t);
       vec2 gc=floor(p.xz*8.0);
       vec2 gOff=fract(p.xz*8.0)-0.5-vec2(hash(gc)-0.5,hash(gc+50.0)-0.5)*0.3;
       float gProx=exp(-dot(gOff,gOff)*40.0);
       float gWind=sin(hash(gc+100.0)*TAU)*0.5;
-      tn.x+=bw.w*(gOff.x+gWind*0.12)*gProx*3.5;
-      tn.z+=bw.w*(gOff.y+gWind*0.08)*gProx*3.5;
+      tn.x+=bw.w*(gOff.x+gWind*0.12)*gProx*3.5*grassFade;
+      tn.z+=bw.w*(gOff.y+gWind*0.08)*gProx*3.5*grassFade;
       // ── 共通マイクロバンプ (vnoise×40 1周波数共用、12→3 vnoise) ──
       float microF=smoothstep(15.0,5.0,t); // 距離LODフェードアウト
       float mb0=vnoise(p.xz*40.0);
