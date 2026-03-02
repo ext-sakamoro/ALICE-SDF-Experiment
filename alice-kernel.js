@@ -95,11 +95,20 @@ function jsBiomeWeights(x,z){
 // JS terrainHeight (物理判定用)
 function jsTerrainHeight(x,z){
   var w=jsBiomeWeights(x,z);
-  var hSnow=jsFbm(x*0.12,z*0.12)*1.2+jsVnoise(x*0.3,z*0.3)*0.3;
-  var hDesert=jsFbm(x*0.08,z*0.08)*0.6+jsVnoise(x*0.06,z*0.06)*0.4;
-  var hRock=jsVoronoiErosion(x*0.15,z*0.15)*1.8;
-  var hGrass=jsFbm(x*0.1,z*0.1)*0.8+jsVnoise(x*0.2,z*0.2)*0.2;
-  return w.s*hSnow+w.d*hDesert+w.r*hRock+w.g*hGrass;
+  var hSnow=jsFbm(x*0.12,z*0.12)*1.5+jsVnoise(x*0.3,z*0.3)*0.4;
+  var hDesert=jsFbm(x*0.08,z*0.08)*0.8+jsVnoise(x*0.06,z*0.06)*0.5;
+  var hRock=jsVoronoiErosion(x*0.15,z*0.15)*2.2;
+  var hGrass=jsFbm(x*0.1,z*0.1)*1.0+jsVnoise(x*0.2,z*0.2)*0.25;
+  var h=w.s*hSnow+w.d*hDesert+w.r*hRock+w.g*hGrass;
+  // 建築エリア平坦化
+  function ss(a,b,v){var t=Math.max(0,Math.min(1,(v-a)/(b-a)));return t*t*(3-2*t);}
+  var fl=ss(10,6,Math.sqrt(x*x+z*z));
+  fl=Math.max(fl,ss(7,3,Math.sqrt(x*x+(z+35)*(z+35))));
+  fl=Math.max(fl,ss(5,1.5,Math.sqrt((x-35)*(x-35)+z*z)));
+  fl=Math.max(fl,ss(7,3,Math.sqrt(x*x+(z-35)*(z-35))));
+  fl=Math.max(fl,ss(9,4,Math.sqrt((x+35)*(x+35)+z*z)));
+  h*=1-fl*0.9;
+  return h;
 }
 
 function jsSdBox(px,py,pz,bx,by,bz){
