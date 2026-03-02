@@ -78,10 +78,10 @@ float voronoiErosion(vec2 p){
 // バイオーム別地形高さ (真理の地形法)
 float terrainHeight(vec2 xz){
   vec4 w=biomeWeights(xz);
-  // 雪: fbm + 青色ノイズ積雪
-  float hSnow=fbm(xz*0.12)*1.5+vnoise(xz*0.3+uTime*0.002)*0.4;
-  // 砂漠: 風ベクトル場の風紋
-  vec2 windDir=vec2(cos(uTime*0.01),sin(uTime*0.01));
+  // 雪: fbm + 青色ノイズ積雪 (uTime除去 — JS側と同期)
+  float hSnow=fbm(xz*0.12)*1.5+vnoise(xz*0.3)*0.4;
+  // 砂漠: 風ベクトル場の風紋 (固定風向 — JS側と同期)
+  vec2 windDir=vec2(0.8,0.6);
   float windProj=dot(xz*0.08,windDir);
   float windPerp=dot(xz*0.08,vec2(-windDir.y,windDir.x));
   float hDesert=fbm(vec2(windProj*3.0,windPerp*0.8))*0.8+vnoise(xz*0.06)*0.5;
