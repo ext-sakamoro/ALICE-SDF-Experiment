@@ -886,10 +886,11 @@ void main(){
       // ── 共通マイクロバンプ (vnoise×40 1周波数共用、12→3 vnoise) ──
       float microF=smoothstep(15.0,5.0,t); // 距離LODフェードアウト
       float mb0=vnoise(p.xz*40.0);
-      float mbGx=(mb0-vnoise((p.xz+e)*40.0))*microF;
-      float mbGz=(mb0-vnoise((p.xz+e.yx)*40.0))*microF;
-      // 雪0.8(氷粒スパークル) 砂0.6(砂粒起伏) 岩1.0(ザラつき) 草0.5(土質感)
-      float mbStr=bw.x*0.8+bw.y*0.6+bw.z*1.0+bw.w*0.5*(1.0-gProx);
+      // e.xで割ることで正しい傾き（勾配）を出し、極小の強度係数を掛ける
+      float mbGx=(vnoise((p.xz+e)*40.0)-mb0)/e.x*microF;
+      float mbGz=(vnoise((p.xz+e.yx)*40.0)-mb0)/e.x*microF;
+      // 強度を極小化: ハイライトの暴走を封殺
+      float mbStr=bw.x*0.05+bw.y*0.04+bw.z*0.06+bw.w*0.03*(1.0-gProx);
       tn.x+=mbGx*mbStr;
       tn.z+=mbGz*mbStr;
       n=normalize(tn);
