@@ -856,38 +856,24 @@ void main(){
       float hx=terrainHeight(p.xz+e);
       float hz=terrainHeight(p.xz+e.yx);
       vec3 tn=normalize(vec3(h0-hx,e.x,h0-hz));
-      // マイクロバンプ距離LOD: 遠距離でフェードアウト (エイリアシング防止)
-      float microF=smoothstep(25.0,8.0,t);
       // ── 雪: 青色ノイズ積雪ドリフト法線 ──
       float sn0=vnoise(p.xz*0.3);
       float snX=vnoise((p.xz+e)*0.3);
       float snZ=vnoise((p.xz+e.yx)*0.3);
       tn.x+=bw.x*(sn0-snX)*14.0;
       tn.z+=bw.x*(sn0-snZ)*14.0;
-      // 雪マイクロ: 氷粒スパークル (vnoise×50)
-      float iceGrain=vnoise(p.xz*50.0);
-      tn.x+=bw.x*(iceGrain-vnoise((p.xz+e)*50.0))*8.0*microF;
-      tn.z+=bw.x*(iceGrain-vnoise((p.xz+e.yx)*50.0))*8.0*microF;
       // ── 砂漠: 風ベクトル場異方性風紋法線 (解析勾配) ──
       vec2 wD=vec2(0.8,0.6); // 固定風向 (terrainHeightと同期)
       float wP=dot(p.xz,wD);
       float ripGrad=cos(wP*25.0)*0.075;
       tn.x+=bw.y*ripGrad*wD.x;
       tn.z+=bw.y*ripGrad*wD.y;
-      // 砂漠マイクロ: 砂粒起伏 (vnoise×80) — 風紋ハイライトを鋭く
-      float sandGrain=vnoise(p.xz*80.0);
-      tn.x+=bw.y*(sandGrain-vnoise((p.xz+e)*80.0))*6.0*microF;
-      tn.z+=bw.y*(sandGrain-vnoise((p.xz+e.yx)*80.0))*6.0*microF;
       // ── 岩石: Voronoi侵食SDF勾配法線 ──
       float ve0=voronoiErosion(p.xz*0.15);
       float veX=voronoiErosion((p.xz+e)*0.15);
       float veZ=voronoiErosion((p.xz+e.yx)*0.15);
       tn.x+=bw.z*(ve0-veX)*20.0;
       tn.z+=bw.z*(ve0-veZ)*20.0;
-      // 岩石マイクロ: ザラつき (vnoise×25)
-      float rockGrit0=vnoise(p.xz*25.0);
-      tn.x+=bw.z*(rockGrit0-vnoise((p.xz+e)*25.0))*10.0*microF;
-      tn.z+=bw.z*(rockGrit0-vnoise((p.xz+e.yx)*25.0))*10.0*microF;
       // ── 草原: sdCylinder L-System法線摂動 (O(1)) ──
       vec2 gc=floor(p.xz*8.0);
       vec2 gOff=fract(p.xz*8.0)-0.5-vec2(hash(gc)-0.5,hash(gc+50.0)-0.5)*0.3;
@@ -895,10 +881,15 @@ void main(){
       float gWind=sin(hash(gc+100.0)*TAU)*0.5;
       tn.x+=bw.w*(gOff.x+gWind*0.12)*gProx*3.5;
       tn.z+=bw.w*(gOff.y+gWind*0.08)*gProx*3.5;
-      // 草原マイクロ: 土の質感 (vnoise×35)
-      float soilBump=vnoise(p.xz*35.0)*(1.0-gProx);
-      tn.x+=bw.w*(soilBump-vnoise((p.xz+e)*35.0)*(1.0-gProx))*5.0*microF;
-      tn.z+=bw.w*(soilBump-vnoise((p.xz+e.yx)*35.0)*(1.0-gProx))*5.0*microF;
+      // ── 共通マイクロバンプ (vnoise×40 1周波数共用、12→3 vnoise) ──
+      float microF=smoothstep(15.0,5.0,t); // 距離LODフェードアウト
+      float mb0=vnoise(p.xz*40.0);
+      float mbGx=(mb0-vnoise((p.xz+e)*40.0))*microF;
+      float mbGz=(mb0-vnoise((p.xz+e.yx)*40.0))*microF;
+      // 雪8(氷粒スパークル) 砂6(砂粒起伏) 岩10(ザラつき) 草5(土質感)
+      float mbStr=bw.x*8.0+bw.y*6.0+bw.z*10.0+bw.w*5.0*(1.0-gProx);
+      tn.x+=mbGx*mbStr;
+      tn.z+=mbGz*mbStr;
       n=normalize(tn);
     }
     Mat mat=getMat(hit.y,p);
