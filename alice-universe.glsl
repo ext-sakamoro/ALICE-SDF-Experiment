@@ -248,26 +248,17 @@ Mat getMat(float id,vec3 p){
     vec3 rockStrata=mix(vec3(0.18,0.16,0.12),vec3(0.28,0.24,0.22),vr.z);
     vec3 rockAlb=mix(rockStrata*0.6,rockStrata+rockN,rockEdge);
     float rockRough=0.55+vnoise(p.xz*12.0)*0.15+(1.0-rockEdge)*0.15;
-    // ── 草原 (Stats): sdCylinder L-System ブレード構造マテリアル ──
+    // ── 草原 (Stats): 均一緑ベース + 法線がブレード構造を描く ──
     float grassN=vnoise(p.xz*3.0)*0.05;
-    // ブレード近接度 (bump計算と同一hashパターン)
-    vec2 mgc1=floor(p.xz*16.0);
-    vec2 mgp1=fract(p.xz*16.0)-vec2(hash(mgc1),hash(mgc1+50.0))*0.4-0.3;
-    float mbx1=exp(-dot(mgp1,mgp1)*35.0);
-    vec2 mgc2=floor(p.xz*6.0);
-    vec2 mgp2=fract(p.xz*6.0)-vec2(hash(mgc2+200.0),hash(mgc2+250.0))*0.4-0.3;
-    float mbx2=exp(-dot(mgp2,mgp2)*20.0);
-    float bladePres=SAT(mbx1*0.7+mbx2);
-    // ブレード=鮮やかな緑 vs 地面=暗い土
-    vec3 bladeCol=vec3(0.12+grassN,0.42+grassN*2.0,0.08+grassN);
-    vec3 soilCol=vec3(0.06+grassN*0.3,0.1+grassN*0.5,0.04+grassN*0.2);
-    vec3 grassAlb=mix(soilCol,bladeCol,bladePres);
+    vec3 grassAlb=vec3(0.1+grassN*0.5,0.32+grassN,0.06+grassN*0.3);
+    // 低周波ノイズで土の隙間をわずかに
+    float soilGap=smoothstep(0.45,0.3,vnoise(p.xz*12.0));
+    grassAlb=mix(grassAlb,vec3(0.06,0.08,0.03),soilGap*0.2);
     // ブレード先端の枯れ色
     float grassTip=SAT(vnoise(p.xz*8.0)*1.5-0.3);
-    grassAlb=mix(grassAlb,vec3(0.32,0.28,0.12),grassTip*bladePres*0.3);
-    // ブレード: 低roughness (ワックス質葉面) + SSS (バックライト透過)
-    float grassRough=mix(0.55,0.3,bladePres)+vnoise(p.xz*10.0)*0.08;
-    float grassSSS=bladePres*0.4;
+    grassAlb=mix(grassAlb,vec3(0.3,0.26,0.12),grassTip*0.15);
+    float grassRough=0.35+vnoise(p.xz*10.0)*0.1;
+    float grassSSS=0.35;
     // ── バイオームブレンド ──
     m.albedo=bw.x*snowAlb+bw.y*sandAlb+bw.z*rockAlb+bw.w*grassAlb;
     m.metallic=bw.z*0.12;
@@ -884,21 +875,35 @@ void main(){
       tn.x+=bw.z*(ve0-veX)*20.0;
       tn.z+=bw.z*(ve0-veZ)*20.0;
       // ── 草原: sdCylinder L-System 2スケール法線摂動 (O(1)) ──
-      // スケール1: 密集ブレード (16本/m)
-      vec2 gc1=floor(p.xz*16.0);
-      vec2 gp1=fract(p.xz*16.0)-vec2(hash(gc1),hash(gc1+50.0))*0.4-0.3;
-      float gx1=exp(-dot(gp1,gp1)*35.0);
-      float gw1=sin(uTime*2.5+hash(gc1+100.0)*TAU)*0.1;
-      // スケール2: 大タフト (6本/m)
-      vec2 gc2=floor(p.xz*6.0);
-      vec2 gp2=fract(p.xz*6.0)-vec2(hash(gc2+200.0),hash(gc2+250.0))*0.4-0.3;
-      float gx2=exp(-dot(gp2,gp2)*20.0);
-      float gw2=sin(uTime*1.8+hash(gc2+300.0)*TAU)*0.15;
-      // sdCylinder勾配合成: ブレード中心放射方向 + 風しなり
-      float gnx=(gp1.x+gw1)*gx1*6.0+(gp2.x+gw2)*gx2*5.0;
-      float gnz=(gp1.y+gw1*0.7)*gx1*6.0+(gp2.y+gw2*0.7)*gx2*5.0;
-      tn.x+=bw.w*gnx;
-      tn.z+=bw.w*gnz;
+      // スケール1: 微細ブレード (24本/m)
+      vec2 gc1=floor(p.xz*24.0);
+      vec2 gp1=fract(p.xz*24.0)-0.5-vec2(hash(gc1)-0.5,hash(gc1+50.0)-0.5)*0.3;
+      float ba1=hash(gc1+77.0)*PI; // L-Systemブレード角度
+      vec2 bd1=vec2(cos(ba1),sin(ba1));
+      vec2 bp1=vec2(-bd1.y,bd1.x); // ブレード直交方向
+      float perpD1=dot(gp1,bp1); // sdCylinder直交距離 (ブレード幅)
+      float alongD1=dot(gp1,bd1); // sdCylinder方向距離 (ブレード長さ)
+      float bx1=exp(-perpD1*perpD1*600.0)*smoothstep(0.4,0.0,abs(alongD1));
+      float gw1=sin(uTime*2.5+hash(gc1+100.0)*TAU);
+      // 法線: ブレード直交方向 + 風しなり
+      vec2 bn1=bp1*sign(perpD1+0.0001);
+      float nx1=(bn1.x+gw1*0.08*bd1.x)*bx1;
+      float nz1=(bn1.y+gw1*0.06*bd1.y)*bx1;
+      // スケール2: 大タフト (8本/m)
+      vec2 gc2=floor(p.xz*8.0);
+      vec2 gp2=fract(p.xz*8.0)-0.5-vec2(hash(gc2+200.0)-0.5,hash(gc2+250.0)-0.5)*0.3;
+      float ba2=hash(gc2+177.0)*PI;
+      vec2 bd2=vec2(cos(ba2),sin(ba2));
+      vec2 bp2=vec2(-bd2.y,bd2.x);
+      float perpD2=dot(gp2,bp2);
+      float alongD2=dot(gp2,bd2);
+      float bx2=exp(-perpD2*perpD2*200.0)*smoothstep(0.45,0.0,abs(alongD2));
+      float gw2=sin(uTime*1.8+hash(gc2+300.0)*TAU);
+      vec2 bn2=bp2*sign(perpD2+0.0001);
+      float nx2=(bn2.x+gw2*0.12*bd2.x)*bx2;
+      float nz2=(bn2.y+gw2*0.08*bd2.y)*bx2;
+      tn.x+=bw.w*(nx1*5.0+nx2*3.5);
+      tn.z+=bw.w*(nz1*5.0+nz2*3.5);
       n=normalize(tn);
     }
     Mat mat=getMat(hit.y,p);
