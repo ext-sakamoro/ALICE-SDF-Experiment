@@ -890,7 +890,7 @@ void main(){
       vec2 gc=floor(p.xz*8.0);
       vec2 gOff=fract(p.xz*8.0)-0.5-vec2(hash(gc)-0.5,hash(gc+50.0)-0.5)*0.3;
       float gProx=exp(-dot(gOff,gOff)*40.0);
-      float gWind=sin(uTime*2.5+hash(gc+100.0)*TAU);
+      float gWind=sin(hash(gc+100.0)*TAU)*0.5; // 静的 (uTime除去)
       tn.x+=bw.w*(gOff.x+gWind*0.12)*gProx*3.5;
       tn.z+=bw.w*(gOff.y+gWind*0.08)*gProx*3.5;
       // 草原マイクロ: 土の質感 (vnoise×35) — 草の根元
@@ -1137,7 +1137,7 @@ void main(){
   col*=vig;
 
   // ═══ Film Grain (perceptual-weighted) ═══
-  float grain=(hash(gl_FragCoord.xy+fract(uTime)*137.0)-0.5)*0.018;
+  float grain=(hash(gl_FragCoord.xy)-0.5)*0.018; // 静的グレイン (uTime除去)
   col+=grain*(1.0-lum*0.6);
 
   // ═══ Color Grading (3-way split toning) ═══
@@ -1150,7 +1150,7 @@ void main(){
   col+=vec3(0.018,0.008,-0.01)*hW*0.4;
 
   // ═══ Blue Noise Dithering (8-bit banding elimination) ═══
-  float dNoise=fract(dot(gl_FragCoord.xy,vec2(0.7548776662,0.5698402909))+fract(uTime*7.23)*0.3819660113);
+  float dNoise=fract(dot(gl_FragCoord.xy,vec2(0.7548776662,0.5698402909))); // 静的ディザー (uTime除去)
   col+=(dNoise-0.5)*0.00392157; // rcp(255.0) = 0.00392157
 
   // ═══ Gamma ═══
