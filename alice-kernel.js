@@ -27,7 +27,11 @@ document.addEventListener('pointerlockchange',function(){
 
 var locations={lobby:{pos:[0,EYE_HEIGHT,12],yaw:0,pitch:-0.1},services:{pos:[0,EYE_HEIGHT,-24],yaw:0,pitch:0},research:{pos:[24,EYE_HEIGHT,0],yaw:PI/2,pitch:0},stats:{pos:[0,EYE_HEIGHT,24],yaw:PI,pitch:-0.05},contact:{pos:[-24,EYE_HEIGHT,0],yaw:-PI/2,pitch:0}};
 var teleport=null;
-function startTeleport(name){var tgt=locations[name];if(!tgt)return;teleport={from:{pos:cam.pos.slice(),yaw:cam.yaw,pitch:cam.pitch},to:tgt,t:0};navEl.querySelectorAll('button').forEach(function(b){b.classList.toggle('active',b.dataset.tp===name);});}
+function startTeleport(name){var tgt=locations[name];if(!tgt)return;
+  // テレポート先の高さを地形に合わせる
+  var tpos=tgt.pos.slice();
+  if(typeof jsTerrainHeight==='function'){tpos[1]=jsTerrainHeight(tpos[0],tpos[2])+EYE_HEIGHT;}
+  teleport={from:{pos:cam.pos.slice(),yaw:cam.yaw,pitch:cam.pitch},to:{pos:tpos,yaw:tgt.yaw,pitch:tgt.pitch},t:0};navEl.querySelectorAll('button').forEach(function(b){b.classList.toggle('active',b.dataset.tp===name);});}
 function smoothstep(t){return t*t*(3-2*t);}
 function lerpAngle(a,b,t){var d=b-a;while(d>PI)d-=2*PI;while(d<-PI)d+=2*PI;return a+d*t;}
 function updateTeleport(dt){if(!teleport)return false;teleport.t+=dt*1.2;var s=smoothstep(Math.min(teleport.t,1));cam.pos[0]=teleport.from.pos[0]+(teleport.to.pos[0]-teleport.from.pos[0])*s;cam.pos[1]=teleport.from.pos[1]+(teleport.to.pos[1]-teleport.from.pos[1])*s;cam.pos[2]=teleport.from.pos[2]+(teleport.to.pos[2]-teleport.from.pos[2])*s;cam.yaw=lerpAngle(teleport.from.yaw,teleport.to.yaw,s);cam.pitch=teleport.from.pitch+(teleport.to.pitch-teleport.from.pitch)*s;cam.vy=0;if(teleport.t>=1)teleport=null;return true;}
@@ -37,6 +41,62 @@ function updateCameraVectors(){var cp=Math.cos(cam.pitch),sp=Math.sin(cam.pitch)
 
 // ═══ JS側SDF — 全域CCD物理判定 (質量と全域CCDの法) ═══
 var COL_RADIUS=0.3,COL_STEPS=4;
+
+// JS vnoise (2D, GLSL版と同一)
+function jsHash(x,z){return((Math.sin(x*127.1+z*311.7)*43758.5453)%1+1)%1;}
+function jsVnoise(x,z){
+  var ix=Math.floor(x),iz=Math.floor(z);
+  var fx=x-ix,fz=z-iz;
+  fx=fx*fx*(3-2*fx);fz=fz*fz*(3-2*fz);
+  var a=jsHash(ix,iz),b=jsHash(ix+1,iz),c=jsHash(ix,iz+1),d=jsHash(ix+1,iz+1);
+  return a+(b-a)*fx+(c-a)*fz+(a-b-c+d)*fx*fz;
+}
+// JS fbm (3反復以下)
+function jsFbm(x,z){
+  var v=0,a=0.5;
+  for(var i=0;i<3;i++){
+    v+=a*jsVnoise(x,z);
+    var nx=0.8*x+0.6*z,nz=-0.6*x+0.8*z;
+    x=nx*2.1;z=nz*2.1;a*=0.48;
+  }
+  return v;
+}
+// JS Voronoi侵食
+function jsVoronoiErosion(x,z){
+  var ni=Math.floor(x),nj=Math.floor(z);
+  var fx=x-ni,fz=z-nj;
+  var md=8,md2=8;
+  for(var j=-1;j<=1;j++)for(var i=-1;i<=1;i++){
+    var ox=jsHash(ni+i,nj+j),oz=jsHash(ni+i+31.3,nj+j+17.7);
+    var rx=i+ox-fx,rz=j+oz-fz;
+    var dd=rx*rx+rz*rz;
+    if(dd<md){md2=md;md=dd;}else if(dd<md2){md2=dd;}
+  }
+  var edge=Math.sqrt(md2)-Math.sqrt(md);
+  return Math.sqrt(md)*0.6-edge*0.8;
+}
+// JS biomeWeights
+function jsBiomeWeights(x,z){
+  var dS=Math.sqrt(x*x+z*z)*0.04;
+  var dD=Math.sqrt(x*x+(z+35)*(z+35))*0.04;
+  var dR=Math.sqrt((x-35)*(x-35)+z*z)*0.04;
+  var dG=Math.sqrt(x*x+(z-35)*(z-35))*0.04;
+  var wS=Math.exp(-dS*dS*0.7);
+  var wD=Math.exp(-dD*dD*0.7);
+  var wR=Math.exp(-dR*dR*0.7);
+  var wG=Math.exp(-dG*dG*0.7);
+  var inv=1/(wS+wD+wR+wG+0.001);
+  return{s:wS*inv,d:wD*inv,r:wR*inv,g:wG*inv};
+}
+// JS terrainHeight (物理判定用)
+function jsTerrainHeight(x,z){
+  var w=jsBiomeWeights(x,z);
+  var hSnow=jsFbm(x*0.12,z*0.12)*1.2+jsVnoise(x*0.3,z*0.3)*0.3;
+  var hDesert=jsFbm(x*0.08,z*0.08)*0.6+jsVnoise(x*0.06,z*0.06)*0.4;
+  var hRock=jsVoronoiErosion(x*0.15,z*0.15)*1.8;
+  var hGrass=jsFbm(x*0.1,z*0.1)*0.8+jsVnoise(x*0.2,z*0.2)*0.2;
+  return w.s*hSnow+w.d*hDesert+w.r*hRock+w.g*hGrass;
+}
 
 function jsSdBox(px,py,pz,bx,by,bz){
   var qx=Math.abs(px)-bx,qy=Math.abs(py)-by,qz=Math.abs(pz)-bz;
@@ -57,8 +117,8 @@ function jsSdCylinder(px,py,pz,h,r){
 }
 
 function jsMap(x,y,z){
-  // 地面
-  var d=y;
+  // 地面 (バイオーム地形)
+  var d=y-jsTerrainHeight(x,z);
   // Lobby base
   d=Math.min(d,jsSdRoundBox(x,y-0.22,z,7.5,0.22,7.5,0.1));
   // Lobby柱×4
@@ -344,7 +404,8 @@ function frame(time){
     updateEnvironment(dt);
     cam.pos[0]=Math.max(-60,Math.min(60,cam.pos[0]));
     cam.pos[2]=Math.max(-60,Math.min(60,cam.pos[2]));
-    cam.pos[1]=Math.max(EYE_HEIGHT,Math.min(30,cam.pos[1]));
+    var minH=jsTerrainHeight(cam.pos[0],cam.pos[2])+EYE_HEIGHT;
+    cam.pos[1]=Math.max(minH,Math.min(30,cam.pos[1]));
     gl.uniform2f(uResL,canvas.width,canvas.height);
     gl.uniform1f(uTimeL,stGameTime);
     gl.uniform1f(uMaxDistL,stMaxDist);

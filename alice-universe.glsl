@@ -29,6 +29,57 @@ float vnoise3(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);float n00=mix
 float fbm(vec2 p){float v=0.0,a=0.5;mat2 r=mat2(0.8,0.6,-0.6,0.8);for(int i=0;i<3;i++){v+=a*vnoise(p);p=r*p*2.1;a*=0.48;}return v;}
 float fbm3(vec3 p){float v=0.0,a=0.5;for(int i=0;i<3;i++){v+=a*vnoise3(p);p=p*2.15+vec3(1.7,3.2,2.8);a*=0.45;}return v;}
 
+// ═══ Biome System (真理の地形法) ═══
+// バイオーム重み: ガウシアン距離ベース連続重み + 正規化 (step/floor禁止)
+// 0=雪(Lobby), 1=砂漠(Services), 2=岩石(Research), 3=草原(Stats)
+vec4 biomeWeights(vec2 xz){
+  // エリア中心
+  float dSnow=length(xz)*0.04;              // Lobby中央
+  float dDesert=length(xz-vec2(0,-35))*0.04; // Services
+  float dRock=length(xz-vec2(35,0))*0.04;    // Research
+  float dGrass=length(xz-vec2(0,35))*0.04;   // Stats
+  // ガウシアン重み (sigma=1.2)
+  float wS=exp(-dSnow*dSnow*0.7);
+  float wD=exp(-dDesert*dDesert*0.7);
+  float wR=exp(-dRock*dRock*0.7);
+  float wG=exp(-dGrass*dGrass*0.7);
+  // 正規化
+  float invSum=1.0/(wS+wD+wR+wG+0.001);
+  return vec4(wS,wD,wR,wG)*invSum;
+}
+
+// Voronoi侵食 (岩石バイオーム用)
+float voronoiErosion(vec2 p){
+  vec2 n=floor(p);vec2 f=fract(p);
+  float md=8.0,md2=8.0;
+  for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+    vec2 g=vec2(float(i),float(j));
+    vec2 o=vec2(hash(n+g),hash(n+g+vec2(31.3,17.7)));
+    vec2 r=g+o-f;float d=dot(r,r);
+    float sel=step(d,md);md2=mix(md2,md,sel);md=mix(md,d,sel);
+  }
+  // 侵食: 鋭利な断面 (md2-md edge)
+  float edge=sqrt(md2)-sqrt(md);
+  return sqrt(md)*0.6-edge*0.8;
+}
+
+// バイオーム別地形高さ
+float terrainHeight(vec2 xz){
+  vec4 w=biomeWeights(xz);
+  // 雪: fbm + 青色ノイズ積雪
+  float hSnow=fbm(xz*0.12)*1.2+vnoise(xz*0.3+uTime*0.002)*0.3;
+  // 砂漠: 風ベクトル場の風紋
+  vec2 windDir=vec2(cos(uTime*0.01),sin(uTime*0.01));
+  float windProj=dot(xz*0.08,windDir);
+  float windPerp=dot(xz*0.08,vec2(-windDir.y,windDir.x));
+  float hDesert=fbm(vec2(windProj*3.0,windPerp*0.8))*0.6+vnoise(xz*0.06)*0.4;
+  // 岩石: Voronoi侵食
+  float hRock=voronoiErosion(xz*0.15)*1.8;
+  // 草原: FBM起伏
+  float hGrass=fbm(xz*0.1)*0.8+vnoise(xz*0.2)*0.2;
+  return w.x*hSnow+w.y*hDesert+w.z*hRock+w.w*hGrass;
+}
+
 // ═══ SDF Primitives ═══
 float sdBox(vec3 p,vec3 b){vec3 q=abs(p)-b;return length(max(q,0.0))+min(max(q.x,max(q.y,q.z)),0.0);}
 float sdRoundBox(vec3 p,vec3 b,float r){vec3 q=abs(p)-b+r;return length(max(q,0.0))+min(max(q.x,max(q.y,q.z)),0.0)-r;}
@@ -139,20 +190,40 @@ struct Mat{vec3 albedo;float metallic;float roughness;vec3 emission;float sss;};
 Mat getMat(float id,vec3 p){
   Mat m;m.emission=vec3(0);m.sss=0.0;
   if(id<0.5){
-    float tile=fbm(p.xz*0.25)*0.06;float micro=vnoise(p.xz*12.0)*0.015;
-    m.albedo=vec3(0.025+tile,0.03+tile,0.048+tile)+micro;m.metallic=0.08;m.roughness=0.18+tile*0.2;
-    vec2 g=abs(fract(p.xz*0.5)-0.5);float line=1.0-smoothstep(0.0,0.012,min(g.x,g.y));
-    vec2 sg=abs(fract(p.xz*2.0)-0.5);float sline=1.0-smoothstep(0.0,0.006,min(sg.x,sg.y));
+    vec4 bw=biomeWeights(p.xz);
+    // ── 雪原 (Lobby) ──
+    float snowN=vnoise(p.xz*2.0)*0.03;
+    vec3 snowAlb=vec3(0.85+snowN,0.88+snowN,0.92+snowN);
+    float snowRough=0.25+vnoise(p.xz*8.0)*0.1;
+    float snowSSS=0.8;
+    // ── 砂漠 (Services) ──
+    float sandN=vnoise(p.xz*6.0)*0.04;
+    vec3 sandAlb=vec3(0.76+sandN,0.62+sandN,0.42+sandN*0.5);
+    // 風紋による異方性roughness
+    vec2 wDir=vec2(cos(uTime*0.01),sin(uTime*0.01));
+    float ripple=vnoise(vec2(dot(p.xz,wDir)*4.0,dot(p.xz,vec2(-wDir.y,wDir.x))*1.5));
+    float sandRough=0.35+ripple*0.25;
+    // ── 岩石 (Research) ──
+    float rockN=vnoise(p.xz*4.0)*0.06;
+    vec3 rockAlb=vec3(0.22+rockN,0.2+rockN,0.18+rockN);
+    float rockRough=0.65+vnoise(p.xz*12.0)*0.15;
+    // ── 草原 (Stats) ──
+    float grassN=vnoise(p.xz*3.0)*0.05;
+    vec3 grassAlb=vec3(0.15+grassN*0.5,0.35+grassN,0.1+grassN*0.3);
+    float grassRough=0.45+vnoise(p.xz*10.0)*0.1;
+    // ── バイオームブレンド ──
+    m.albedo=bw.x*snowAlb+bw.y*sandAlb+bw.z*rockAlb+bw.w*grassAlb;
+    m.metallic=bw.z*0.12; // 岩石のみ微量
+    m.roughness=bw.x*snowRough+bw.y*sandRough+bw.z*rockRough+bw.w*grassRough;
+    m.sss=bw.x*snowSSS;
+    m.emission=vec3(0);
+    // パスグロー (全バイオーム共通、薄く)
     float pathGlow=max(smoothstep(1.0,0.0,abs(p.x)),smoothstep(1.0,0.0,abs(p.z)));
     float pathPulse=sin(length(p.xz)*0.3-uTime*1.5)*0.3+0.7;
-    m.emission=vec3(0.06,0.35,0.7)*line*0.55+vec3(0.03,0.18,0.4)*sline*0.18+vec3(0.04,0.35,0.65)*pathGlow*0.25*pathPulse;
-    float puddle=smoothstep(3.0,0.5,length(fract(p.xz*0.08)*12.5-6.25));
-    m.roughness*=mix(1.0,0.03,puddle*0.4);
-    // Rain makes floor wetter
+    m.emission+=vec3(0.04,0.25,0.55)*pathGlow*0.15*pathPulse;
+    // Rain: 全バイオーム共通
     m.roughness*=mix(1.0,0.04,uWxRain*0.55);
-    // Rain splash ripples on floor
     if(uWxRain>0.01){
-      // 3 layers of expanding concentric ripples at pseudo-random positions
       float splash=0.0;
       for(int i=0;i<3;i++){
         float fi=float(i);
@@ -165,10 +236,8 @@ Mat getMat(float id,vec3 p){
         splash+=ring*fade;
       }
       splash=min(splash,1.0)*uWxRain;
-      // Ripples disturb roughness locally
       m.roughness=mix(m.roughness,0.01,splash*0.6);
-      // Tiny white splash highlight
-      m.emission+=vec3(0.15,0.25,0.45)*splash*0.35;
+      m.emission+=vec3(0.15,0.25,0.45)*splash*0.25;
     }
   }else if(id<1.5){
     // Energy Orb — branchless zone color via step masks
@@ -329,7 +398,7 @@ float sdDebris(vec3 p,float t,vec2 center){
 
 // ═══ Scene ═══
 vec2 map(vec3 p){
-  float d=p.y;
+  float d=p.y-terrainHeight(p.xz);
   {float impG=step(0.01,uImpact);vec2 cp=p.xz-uMeteorImpact;float cd=length(cp);float cR=max(uImpactRing*0.06,0.3);d-=smoothstep(cR,cR*0.15,cd)*cR*0.4*uImpact*impG;}
   float id=0.0;
 
@@ -521,9 +590,9 @@ vec2 map(vec3 p){
   return vec2(d,id);
 }
 
-// ═══ map_lite — AO/Shadow/Rain用軽量SDF (最小構成) ═══
+// ═══ map_lite — AO/Shadow/Rain用軽量SDF (最小構成+地形) ═══
 float map_lite(vec3 p){
-  float d=p.y;
+  float d=p.y-terrainHeight(p.xz);
   d=min(d,sdRoundBox(p-vec3(0,0.22,0),vec3(7.5,0.22,7.5),0.1));
   d=min(d,sdSphere(p-vec3(0,12.5,0),3.0));
   return d;
@@ -741,12 +810,24 @@ void main(){
     vec3 n=calcN(p,t);
     vec3 V=-rd;
 
-    // Floor bump (vnoise 2D中心差分)
+    // Floor bump (バイオーム別法線摂動)
     if(hit.y<0.5){
+      vec4 bw=biomeWeights(p.xz);
       vec2 e=vec2(0.025,0);
-      float nx=vnoise((p.xz+e)*4.0)-vnoise((p.xz-e)*4.0);
-      float nz=vnoise((p.xz+e.yx)*4.0)-vnoise((p.xz-e.yx)*4.0);
-      n=normalize(n+vec3(nx,0,nz)*0.6);
+      // 地形勾配から法線
+      float h0=terrainHeight(p.xz);
+      float hx=terrainHeight(p.xz+e);
+      float hz=terrainHeight(p.xz+e.yx);
+      vec3 tn=normalize(vec3(h0-hx,e.x,h0-hz));
+      // 草原: 草ブレード法線摂動 (O(1) — sdCylinder代替)
+      float bladePhase=vnoise(p.xz*15.0)*6.28+uTime*2.0;
+      float bladeStr=bw.w*0.35; // 草原の重みに比例
+      tn.x+=sin(bladePhase)*bladeStr;
+      tn.z+=cos(bladePhase*1.3)*bladeStr;
+      // 岩石: 高周波ディテール
+      float rockDetail=bw.z*(vnoise(p.xz*20.0)-0.5)*0.4;
+      tn.x+=rockDetail;tn.z+=rockDetail*0.8;
+      n=normalize(tn);
     }
     Mat mat=getMat(hit.y,p);
     rocc=1.0;if(uWxRain>0.01)rocc=rainOcc(p);
