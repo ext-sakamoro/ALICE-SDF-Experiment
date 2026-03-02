@@ -248,26 +248,36 @@ Mat getMat(float id,vec3 p){
     vec3 rockStrata=mix(vec3(0.18,0.16,0.12),vec3(0.28,0.24,0.22),vr.z);
     vec3 rockAlb=mix(rockStrata*0.6,rockStrata+rockN,rockEdge);
     float rockRough=0.55+vnoise(p.xz*12.0)*0.15+(1.0-rockEdge)*0.15;
-    // ── 草原 (Stats): 密生草原 + 風波明暗 ──
+    // ── 草原 (Stats): 密生草原 + sdCylinder微細テクスチャ + 風波明暗 ──
     // 密生ベース: 全面がオリーブ〜黄緑の草で覆われている
     vec3 grassBase=vec3(0.14,0.19,0.06); // 暗めオリーブ緑
     // タフト変調 (低周波): 株の高さ/密度のうねり
-    float tuft=vnoise(p.xz*2.5)*0.5+0.5; // 0〜1 タフト密度
-    // 風による傾斜色シフト: 倒れた面=暗緑, 立った面=黄緑の先端が見える
-    vec2 mwD=vec2(cos(uTime*0.01),sin(uTime*0.01)); // 統一風向
-    float windPhase=sin(dot(p.xz,mwD)*0.5-uTime*3.0)*0.5+0.5; // ガスト波
-    float windLean=windPhase*0.6+vnoise(p.xz*0.3+vec2(uTime*0.08,uTime*0.06))*0.15;
-    // 倒れた草=暗い側面, 立った草=黄色い先端が見える
-    vec3 leanDark=vec3(0.1,0.15,0.04); // 風で倒れた草の側面色
-    vec3 leanLight=vec3(0.22,0.24,0.1); // 立った草の先端色 (黄緑)
+    float tuft=vnoise(p.xz*2.5)*0.5+0.5;
+    // 風による大スケール色シフト
+    vec2 mwD=vec2(cos(uTime*0.01),sin(uTime*0.01));
+    float windPhase=sin(dot(p.xz,mwD)*0.5-uTime*3.0)*0.5+0.5;
+    float windLean=windPhase*0.5+vnoise(p.xz*0.3+vec2(uTime*0.08,uTime*0.06))*0.12;
+    vec3 leanDark=vec3(0.1,0.15,0.04);
+    vec3 leanLight=vec3(0.22,0.24,0.1);
     vec3 grassAlb=mix(leanDark,leanLight,windLean);
-    // タフト密度でベース色をブレンド
-    grassAlb=mix(grassBase,grassAlb,tuft*0.7+0.3);
-    // 微細ノイズ: 草の個体差
-    float grassVar=vnoise(p.xz*15.0)*0.04;
-    grassAlb+=vec3(grassVar*0.5,grassVar,-grassVar*0.3);
-    float grassRough=0.35+windLean*0.1-tuft*0.08; // 風で倒れた面は少し粗い
-    float grassSSS=0.35+tuft*0.1; // 密な株ほど透過光
+    grassAlb=mix(grassBase,grassAlb,tuft*0.6+0.4);
+    // sdCylinder微細テクスチャ: 密生緑の上にブレード構造の微かな明暗を載せる
+    vec2 mgc=floor(p.xz*30.0);
+    vec2 mgp=fract(p.xz*30.0)-0.5-vec2(hash(mgc)-0.5,hash(mgc+50.0)-0.5)*0.25;
+    float mba=hash(mgc+77.0)*PI;
+    vec2 mbd=vec2(cos(mba),sin(mba));
+    vec2 mbp=vec2(-mbd.y,mbd.x);
+    float mPerp=dot(mgp,mbp);
+    float mAlong=dot(mgp,mbd);
+    // ブレード近接度: 密生なので幅広め (exp係数小さく)、重なり合う
+    float bladeProx=exp(-mPerp*mPerp*120.0)*smoothstep(0.45,0.0,abs(mAlong));
+    float bladeTip=SAT(mAlong*2.0+0.6);
+    // ブレード上: 微かに明るい緑、先端で微かに黄ばむ (5-10%変調)
+    grassAlb+=bladeProx*mix(vec3(0.01,0.02,0.005),vec3(0.03,0.01,-0.01),bladeTip);
+    // ブレード間の微かな陰: 密生の隙間
+    grassAlb*=mix(0.92,1.0,bladeProx);
+    float grassRough=0.32+windLean*0.06-bladeProx*0.05;
+    float grassSSS=0.3+bladeProx*0.15+tuft*0.05;
     // ── バイオームブレンド ──
     m.albedo=bw.x*snowAlb+bw.y*sandAlb+bw.z*rockAlb+bw.w*grassAlb;
     m.metallic=bw.z*0.12;
@@ -906,8 +916,8 @@ void main(){
       float bWind2=(0.35+gGust2*0.55)*respond2*tuftH;
       vec2 tilt2=wD*bWind2;
       // 合成: 大うねり + 微細ブレード差
-      tn.x+=bw.w*(tilt2.x*4.0+tilt1.x*2.5);
-      tn.z+=bw.w*(tilt2.y*4.0+tilt1.y*2.5);
+      tn.x+=bw.w*(tilt2.x*1.0+tilt1.x*0.6);
+      tn.z+=bw.w*(tilt2.y*1.0+tilt1.y*0.6);
       n=normalize(tn);
     }
     Mat mat=getMat(hit.y,p);
