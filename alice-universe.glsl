@@ -228,7 +228,9 @@ Mat getMat(float id,vec3 p){
     float snowN=vnoise(p.xz*2.0)*0.03;
     float snowIce=vnoise(p.xz*12.0)*0.02;
     vec3 snowAlb=vec3(0.85+snowN,0.88+snowN+snowIce,0.92+snowN+snowIce*2.0);
-    float snowRough=0.25+vnoise(p.xz*8.0)*0.1;
+    // 氷面=極低ラフネス(鏡面)、積雪面=やや粗い
+    float iceF=smoothstep(0.4,0.6,vnoise(p.xz*6.0)); // 氷/雪の混在
+    float snowRough=mix(0.04,0.35,iceF)+vnoise(p.xz*8.0)*0.05;
     float snowSSS=0.8;
     // ── 砂漠 (Services): 風ベクトル場異方性反射 ──
     float sandN=vnoise(p.xz*6.0)*0.04;
@@ -240,21 +242,24 @@ Mat getMat(float id,vec3 p){
     vec3 sandAlb=vec3(0.76+sandN,0.62+sandN,0.42+sandN*0.5);
     float sandH=SAT(p.y*0.5+0.5);
     sandAlb=mix(sandAlb,sandAlb*vec3(1.1,0.95,0.85),sandH);
-    float sandRough=0.3+ripPar*0.15+ripPer*0.1;
+    // 風紋の谷=滑らか(砂が圧縮)、稜線=極粗(砂粒露出)
+    float sandRough=0.15+ripPar*0.45+ripPer*0.2;
     // ── 岩石 (Research): Voronoi侵食SDF勾配→地層色+亀裂 ──
     float rockN=vnoise(p.xz*4.0)*0.06;
     vec3 vr=voronoi2(p.xz*0.8);
     float rockEdge=smoothstep(0.0,0.12,vr.y);
     vec3 rockStrata=mix(vec3(0.18,0.16,0.12),vec3(0.28,0.24,0.22),vr.z);
     vec3 rockAlb=mix(rockStrata*0.6,rockStrata+rockN,rockEdge);
-    float rockRough=0.55+vnoise(p.xz*12.0)*0.15+(1.0-rockEdge)*0.15;
+    // 亀裂内=極粗(風化面)、平面=やや滑らか(研磨)
+    float rockRough=0.4+vnoise(p.xz*12.0)*0.2+(1.0-rockEdge)*0.35;
     // ── 草原 (Stats): sdCylinder 2層albedo ──
     float grassN=vnoise(p.xz*3.0)*0.05;
     vec3 grassGreen=vec3(0.15+grassN*0.5,0.35+grassN,0.1+grassN*0.3);
     vec3 grassDry=vec3(0.3+grassN,0.28+grassN*0.5,0.12);
     float grassTip=SAT(vnoise(p.xz*8.0)*1.5-0.3);
     vec3 grassAlb=mix(grassGreen,grassDry,grassTip*0.35);
-    float grassRough=0.45+vnoise(p.xz*10.0)*0.1;
+    // 草先端=蝋質キューティクル(低)、根元/土=粗い
+    float grassRough=mix(0.6,0.18,grassTip)+vnoise(p.xz*10.0)*0.08;
     // ── バイオームブレンド ──
     m.albedo=bw.x*snowAlb+bw.y*sandAlb+bw.z*rockAlb+bw.w*grassAlb;
     m.metallic=bw.z*0.12;
@@ -845,7 +850,7 @@ void main(){
     // Floor bump (バイオーム別SDF法線摂動 — 真理の地形法)
     if(hit.y<0.5){
       vec4 bw=biomeWeights(p.xz);
-      vec2 e=vec2(0.025,0);
+      vec2 e=vec2(max(0.002,t*0.001),0); // 適応型極小エプシロン
       // 地形マクロ勾配
       float h0=terrainHeight(p.xz);
       float hx=terrainHeight(p.xz+e);
@@ -857,18 +862,30 @@ void main(){
       float snZ=vnoise((p.xz+e.yx)*0.3+uTime*0.002);
       tn.x+=bw.x*(sn0-snX)*14.0;
       tn.z+=bw.x*(sn0-snZ)*14.0;
+      // 雪マイクロ: 氷粒スパークル (vnoise×50)
+      float iceGrain=vnoise(p.xz*50.0);
+      tn.x+=bw.x*(iceGrain-vnoise((p.xz+e)*50.0))*8.0;
+      tn.z+=bw.x*(iceGrain-vnoise((p.xz+e.yx)*50.0))*8.0;
       // ── 砂漠: 風ベクトル場異方性風紋法線 (解析勾配) ──
       vec2 wD=vec2(cos(uTime*0.01),sin(uTime*0.01));
       float wP=dot(p.xz,wD);
       float ripGrad=cos(wP*25.0)*0.075;
       tn.x+=bw.y*ripGrad*wD.x;
       tn.z+=bw.y*ripGrad*wD.y;
+      // 砂漠マイクロ: 砂粒起伏 (vnoise×80) — 風紋ハイライトを鋭く
+      float sandGrain=vnoise(p.xz*80.0);
+      tn.x+=bw.y*(sandGrain-vnoise((p.xz+e)*80.0))*6.0;
+      tn.z+=bw.y*(sandGrain-vnoise((p.xz+e.yx)*80.0))*6.0;
       // ── 岩石: Voronoi侵食SDF勾配法線 ──
       float ve0=voronoiErosion(p.xz*0.15);
       float veX=voronoiErosion((p.xz+e)*0.15);
       float veZ=voronoiErosion((p.xz+e.yx)*0.15);
       tn.x+=bw.z*(ve0-veX)*20.0;
       tn.z+=bw.z*(ve0-veZ)*20.0;
+      // 岩石マイクロ: ザラつき (vnoise×25) — 乾いた岩肌のカリカリ感
+      float rockGrit0=vnoise(p.xz*25.0);
+      tn.x+=bw.z*(rockGrit0-vnoise((p.xz+e)*25.0))*10.0;
+      tn.z+=bw.z*(rockGrit0-vnoise((p.xz+e.yx)*25.0))*10.0;
       // ── 草原: sdCylinder L-System法線摂動 (O(1)) ──
       vec2 gc=floor(p.xz*8.0);
       vec2 gOff=fract(p.xz*8.0)-0.5-vec2(hash(gc)-0.5,hash(gc+50.0)-0.5)*0.3;
@@ -876,6 +893,10 @@ void main(){
       float gWind=sin(uTime*2.5+hash(gc+100.0)*TAU);
       tn.x+=bw.w*(gOff.x+gWind*0.12)*gProx*3.5;
       tn.z+=bw.w*(gOff.y+gWind*0.08)*gProx*3.5;
+      // 草原マイクロ: 土の質感 (vnoise×35) — 草の根元
+      float soilBump=vnoise(p.xz*35.0)*(1.0-gProx); // ブレード外=土
+      tn.x+=bw.w*(soilBump-vnoise((p.xz+e)*35.0)*(1.0-gProx))*5.0;
+      tn.z+=bw.w*(soilBump-vnoise((p.xz+e.yx)*35.0)*(1.0-gProx))*5.0;
       n=normalize(tn);
     }
     Mat mat=getMat(hit.y,p);
