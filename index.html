@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A.L.I.C.E. — SDF Metaverse</title>
+<meta name="description" content="Project A.L.I.C.E. — モジュール型AIエージェント、SDF空間を歩き回れるメタバース型コーポレートサイト。">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font-family:'Hiragino Kaku Gothic ProN','Yu Gothic','Noto Sans JP',sans-serif}
+canvas#c{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;cursor:none}
+#start{position:fixed;inset:0;z-index:200;background:radial-gradient(ellipse at center,rgba(8,12,28,0.96),rgba(0,0,0,0.99));display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:opacity 0.6s}
+#start h1{font-size:clamp(2.5rem,6vw,4rem);font-weight:700;letter-spacing:0.12em;margin-bottom:0.8rem;background:linear-gradient(135deg,#4af,#a4f,#4af);background-size:200% 200%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:gradShift 4s ease infinite}
+@keyframes gradShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+#start .sub{font-size:0.9rem;color:rgba(255,255,255,0.45);margin-bottom:2.5rem;letter-spacing:0.06em}
+#start .keys{font-size:0.72rem;color:rgba(255,255,255,0.22);font-family:'SF Mono','Fira Code',monospace;letter-spacing:0.05em;line-height:2.2}
+#start .enter{font-size:0.95rem;color:rgba(255,255,255,0.6);margin-top:2.5rem;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:0.4}50%{opacity:1}}
+#resume{position:fixed;inset:0;z-index:190;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;cursor:pointer;font-size:1rem;color:rgba(255,255,255,0.6)}
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;gap:0.5rem;padding:0.6rem 1.2rem;background:rgba(0,0,0,0.45);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,0.04);transition:opacity 0.3s;opacity:0}
+nav .logo{font-size:1rem;font-weight:700;color:#4af;margin-right:auto;letter-spacing:0.06em}
+nav button{background:none;border:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.45);padding:0.3rem 0.8rem;border-radius:0.3rem;font-size:0.7rem;cursor:pointer;font-family:inherit;transition:all 0.2s;letter-spacing:0.02em}
+nav button:hover{border-color:rgba(74,170,255,0.4);color:#4af;background:rgba(74,170,255,0.05)}
+nav button.active{border-color:#4af;color:#4af;background:rgba(74,170,255,0.08)}
+#cross{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:90;color:rgba(255,255,255,0.15);font-size:1.2rem;pointer-events:none;display:none;font-family:monospace}
+#hint{position:fixed;bottom:1.2rem;left:1.2rem;z-index:80;font-size:0.6rem;color:rgba(255,255,255,0.18);pointer-events:none;display:none;font-family:'SF Mono','Fira Code',monospace;letter-spacing:0.05em;line-height:1.8}
+#minimap{position:fixed;bottom:1rem;right:1rem;z-index:80;border:1px solid rgba(255,255,255,0.06);border-radius:0.4rem;display:none;background:rgba(0,0,0,0.4)}
+.label{position:fixed;z-index:70;pointer-events:none;text-align:center;transform:translate(-50%,-100%);transition:opacity 0.3s;max-width:300px}
+.label h2{font-size:1.4rem;font-weight:700;margin-bottom:0.3rem;text-shadow:0 0 20px rgba(74,170,255,0.5)}
+.label h3{font-size:1rem;font-weight:600;margin-bottom:0.2rem;text-shadow:0 0 15px rgba(74,170,255,0.3)}
+.label p{font-size:0.75rem;color:rgba(255,255,255,0.5);line-height:1.6}
+.label .stat-num{font-size:2rem;font-weight:700;color:#4af;text-shadow:0 0 30px rgba(74,170,255,0.4)}
+.label .bench{font-size:0.8rem;margin:0.15rem 0}
+.label .bench strong{color:#4af;font-size:1.1rem}
+.label .glass{background:rgba(2,8,20,0.55);backdrop-filter:blur(14px);border:1px solid rgba(74,170,255,0.08);border-radius:0.6rem;padding:0.9rem 1.3rem;box-shadow:0 4px 30px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.03)}
+#loc{position:fixed;top:3rem;left:50%;transform:translateX(-50%);z-index:85;font-size:0.65rem;color:rgba(255,255,255,0.2);pointer-events:none;display:none;font-family:'SF Mono','Fira Code',monospace;letter-spacing:0.08em}
+#tw{position:fixed;top:3rem;right:1rem;z-index:85;font-size:0.6rem;color:rgba(255,255,255,0.22);pointer-events:none;display:none;font-family:'SF Mono','Fira Code',monospace;letter-spacing:0.06em;text-align:right;line-height:1.6}
+#ent{position:fixed;bottom:3.5rem;left:1.2rem;z-index:85;pointer-events:none;display:none}
+#ent .bar{width:100px;height:2px;background:rgba(255,255,255,0.05);border-radius:1px;overflow:hidden}
+#ent .fill{height:100%;width:0%;background:linear-gradient(90deg,#4af,#f44);border-radius:1px;transition:width 0.3s}
+#ent .lbl{font-size:0.5rem;color:rgba(255,255,255,0.18);font-family:'SF Mono','Fira Code',monospace;margin-top:2px;letter-spacing:0.04em}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="start">
+  <h1>A.L.I.C.E.</h1>
+  <div class="sub">Autonomous Layered Intelligence for Cooperative Execution</div>
+  <div class="keys">
+    WASD : Move<br>
+    Mouse : Look<br>
+    Space : Ascend / Release to Descend<br>
+    ESC : Menu
+  </div>
+  <div class="enter">Click to Enter</div>
+</div>
+
+<div id="resume">Click to Resume</div>
+
+<nav id="nav">
+  <div class="logo">A.L.I.C.E.</div>
+  <button data-tp="lobby">Lobby</button>
+  <button data-tp="services">Modules</button>
+  <button data-tp="research">Research</button>
+  <button data-tp="stats">Ecosystem</button>
+  <button data-tp="contact">Links</button>
+</nav>
+
+<div id="cross">+</div>
+<div id="hint">WASD: Move &nbsp; Mouse: Look &nbsp; Space: Ascend &nbsp; ESC: Menu</div>
+<div id="loc"></div>
+<div id="tw"></div>
+<div id="ent"><div class="bar"><div class="fill" id="entFill"></div></div><div class="lbl" id="entLbl"></div></div>
+<canvas id="minimap" width="140" height="140"></canvas>
+<div id="labels"></div>
+
+<script src="alice-kernel.js"></script>
+</body>
+</html>
