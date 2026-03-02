@@ -87,20 +87,8 @@ float terrainHeight(vec2 xz){
   float hDesert=fbm(vec2(windProj*3.0,windPerp*0.8))*0.8+vnoise(xz*0.06)*0.5;
   // 岩石: Voronoi侵食
   float hRock=voronoiErosion(xz*0.15)*2.2;
-  // 草原: FBM起伏 + sdCylinderブレード高さ (8本/m, 高さ0.25)
+  // 草原: FBM起伏
   float hGrass=fbm(xz*0.1)*1.0+vnoise(xz*0.2)*0.25;
-  vec2 gCell=floor(xz*8.0);
-  vec2 gPos=fract(xz*8.0)-0.5-vec2(hash(gCell)-0.5,hash(gCell+50.0)-0.5)*0.3;
-  float gAng=hash(gCell+77.0)*PI;
-  vec2 gDir=vec2(cos(gAng),sin(gAng));
-  vec2 gPerp=vec2(-gDir.y,gDir.x);
-  float gPd=dot(gPos,gPerp);
-  float gAd=dot(gPos,gDir);
-  // 薄いブレード形状: 幅狭く(exp*800)、長さ方向はsmoothstep
-  float bladeH=exp(-gPd*gPd*800.0)*smoothstep(0.4,0.0,abs(gAd));
-  // ブレード毎の高さばらつき
-  bladeH*=mix(0.6,1.0,hash(gCell+99.0));
-  hGrass+=bladeH*0.25*w.w;
   float h=w.x*hSnow+w.y*hDesert+w.z*hRock+w.w*hGrass;
   // 建築エリア平坦化 (base平板と自然に接続)
   float bFlat=smoothstep(10.0,6.0,length(xz));
@@ -216,7 +204,7 @@ vec3 interiorMap(vec3 p,float scale){
   return col;
 }
 
-// ═══ Voronoi2 (岩石マテリアル + 破壊共用) ═══
+// ═══ Voronoi2 (getMat/destructionAtで使用、前方参照不可のため先に定義) ═══
 vec3 voronoi2(vec2 p){
   vec2 n=floor(p);vec2 f=fract(p);
   float md=8.0,md2=8.0;vec2 mg=vec2(0);
@@ -260,33 +248,18 @@ Mat getMat(float id,vec3 p){
     vec3 rockStrata=mix(vec3(0.18,0.16,0.12),vec3(0.28,0.24,0.22),vr.z);
     vec3 rockAlb=mix(rockStrata*0.6,rockStrata+rockN,rockEdge);
     float rockRough=0.55+vnoise(p.xz*12.0)*0.15+(1.0-rockEdge)*0.15;
-    // ── 草原 (Stats): sdCylinder 8本/m ブレード描画 ──
-    // terrainHeightと同じ8本/mグリッドでブレード近接度を計算
-    vec2 mgc=floor(p.xz*8.0);
-    vec2 mgp=fract(p.xz*8.0)-0.5-vec2(hash(mgc)-0.5,hash(mgc+50.0)-0.5)*0.3;
-    float mba=hash(mgc+77.0)*PI;
-    vec2 mbd=vec2(cos(mba),sin(mba));
-    vec2 mbp=vec2(-mbd.y,mbd.x);
-    float mPerp=dot(mgp,mbp);
-    float mAlong=dot(mgp,mbd);
-    float bladeProx=exp(-mPerp*mPerp*800.0)*smoothstep(0.4,0.0,abs(mAlong));
-    bladeProx*=mix(0.6,1.0,hash(mgc+99.0)); // 高さばらつき同期
-    float bladeTip=SAT(mAlong*2.5+0.6); // 根元0→先端1
-    // ブレード上: 鮮やかな緑、根元暗め→先端黄緑
-    vec3 bladeCol=mix(vec3(0.06,0.18,0.03),vec3(0.2,0.28,0.06),bladeTip);
-    // ブレード間: 暗い地面
-    vec3 gapCol=vec3(0.04,0.08,0.02);
-    // ブレード毎の色相ばらつき
-    float hueV=hash(mgc+400.0)*0.06;
-    bladeCol.g+=hueV; bladeCol.r-=hueV*0.3;
-    vec3 grassAlb=mix(gapCol,bladeCol,bladeProx);
-    float grassRough=mix(0.55,0.22,bladeProx); // ブレード面はキューティクルで低ラフネス
-    float grassSSS=bladeProx*0.45; // 薄葉透過光
+    // ── 草原 (Stats): sdCylinder 2層albedo ──
+    float grassN=vnoise(p.xz*3.0)*0.05;
+    vec3 grassGreen=vec3(0.15+grassN*0.5,0.35+grassN,0.1+grassN*0.3);
+    vec3 grassDry=vec3(0.3+grassN,0.28+grassN*0.5,0.12);
+    float grassTip=SAT(vnoise(p.xz*8.0)*1.5-0.3);
+    vec3 grassAlb=mix(grassGreen,grassDry,grassTip*0.35);
+    float grassRough=0.45+vnoise(p.xz*10.0)*0.1;
     // ── バイオームブレンド ──
     m.albedo=bw.x*snowAlb+bw.y*sandAlb+bw.z*rockAlb+bw.w*grassAlb;
     m.metallic=bw.z*0.12;
     m.roughness=bw.x*snowRough+bw.y*sandRough+bw.z*rockRough+bw.w*grassRough;
-    m.sss=bw.x*snowSSS+bw.w*grassSSS;
+    m.sss=bw.x*snowSSS;
     m.emission=vec3(0);
     // パスグロー (全バイオーム共通、薄く)
     float pathGlow=max(smoothstep(1.0,0.0,abs(p.x)),smoothstep(1.0,0.0,abs(p.z)));
@@ -896,19 +869,13 @@ void main(){
       float veZ=voronoiErosion((p.xz+e.yx)*0.15);
       tn.x+=bw.z*(ve0-veX)*20.0;
       tn.z+=bw.z*(ve0-veZ)*20.0;
-      // ── 草原: sdCylinderブレード法線 8本/m (静的) ──
-      vec2 gc1=floor(p.xz*8.0);
-      vec2 gp1=fract(p.xz*8.0)-0.5-vec2(hash(gc1)-0.5,hash(gc1+50.0)-0.5)*0.3;
-      float ba1=hash(gc1+77.0)*PI;
-      vec2 bd1=vec2(cos(ba1),sin(ba1));
-      vec2 bp1=vec2(-bd1.y,bd1.x);
-      float perpD1=dot(gp1,bp1);
-      float alongD1=dot(gp1,bd1);
-      float bx1=exp(-perpD1*perpD1*800.0)*smoothstep(0.4,0.0,abs(alongD1));
-      bx1*=mix(0.6,1.0,hash(gc1+99.0));
-      vec2 bn1=bp1*sign(perpD1+0.0001);
-      tn.x+=bw.w*bn1.x*bx1*3.0;
-      tn.z+=bw.w*bn1.y*bx1*3.0;
+      // ── 草原: sdCylinder L-System法線摂動 (O(1)) ──
+      vec2 gc=floor(p.xz*8.0);
+      vec2 gOff=fract(p.xz*8.0)-0.5-vec2(hash(gc)-0.5,hash(gc+50.0)-0.5)*0.3;
+      float gProx=exp(-dot(gOff,gOff)*40.0);
+      float gWind=sin(uTime*2.5+hash(gc+100.0)*TAU);
+      tn.x+=bw.w*(gOff.x+gWind*0.12)*gProx*3.5;
+      tn.z+=bw.w*(gOff.y+gWind*0.08)*gProx*3.5;
       n=normalize(tn);
     }
     Mat mat=getMat(hit.y,p);
