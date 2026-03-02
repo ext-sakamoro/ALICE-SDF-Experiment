@@ -75,29 +75,21 @@ float voronoiErosion(vec2 p){
   return sqrt(md)*0.6-edge*0.8;
 }
 
-// バイオーム別地形高さ (UE5グレード — ドラマチックな起伏)
+// バイオーム別地形高さ
 float terrainHeight(vec2 xz){
   vec4 w=biomeWeights(xz);
-  // 雪: 山岳 + 尾根構造 + 時間積分積雪
-  float hSnow=fbm(xz*0.08)*2.2+max(vnoise(xz*0.18)-0.4,0.0)*1.8+vnoise(xz*0.3+uTime*0.002)*0.35;
-  // 砂漠: バルハン砂丘 + 微細風紋
+  // 雪: fbm + 青色ノイズ積雪
+  float hSnow=fbm(xz*0.12)*1.2+vnoise(xz*0.3+uTime*0.002)*0.3;
+  // 砂漠: 風ベクトル場の風紋
   vec2 windDir=vec2(cos(uTime*0.01),sin(uTime*0.01));
   float windProj=dot(xz*0.08,windDir);
   float windPerp=dot(xz*0.08,vec2(-windDir.y,windDir.x));
-  float hDesert=fbm(vec2(windProj*3.0,windPerp*0.8))*1.1+vnoise(vec2(windProj*12.0,windPerp*2.0))*0.1+vnoise(xz*0.05)*0.5;
-  // 岩石: Voronoi断崖 + 侵食ディテール
-  float hRock=voronoiErosion(xz*0.12)*2.6+vnoise(xz*0.22)*0.4;
-  // 草原: なだらかな丘陵
-  float hGrass=fbm(xz*0.08)*1.4+vnoise(xz*0.18)*0.45;
-  float h=w.x*hSnow+w.y*hDesert+w.z*hRock+w.w*hGrass;
-  // 建物エリア平坦化 (チェビシェフ距離 — sqrt不要)
-  vec2 ac=abs(xz);
-  float fade=smoothstep(8.0,20.0,max(ac.x,ac.y));
-  vec2 d1=abs(xz-vec2(0,-35));fade*=smoothstep(5.0,14.0,max(d1.x,d1.y));
-  vec2 d2=abs(xz-vec2(35,0));fade*=smoothstep(5.0,14.0,max(d2.x,d2.y));
-  vec2 d3=abs(xz-vec2(0,35));fade*=smoothstep(5.0,14.0,max(d3.x,d3.y));
-  vec2 d4=abs(xz-vec2(-35,0));fade*=smoothstep(5.0,14.0,max(d4.x,d4.y));
-  return h*fade;
+  float hDesert=fbm(vec2(windProj*3.0,windPerp*0.8))*0.6+vnoise(xz*0.06)*0.4;
+  // 岩石: Voronoi侵食
+  float hRock=voronoiErosion(xz*0.15)*1.8;
+  // 草原: FBM起伏
+  float hGrass=fbm(xz*0.1)*0.8+vnoise(xz*0.2)*0.2;
+  return w.x*hSnow+w.y*hDesert+w.z*hRock+w.w*hGrass;
 }
 
 // ═══ SDF Primitives ═══
@@ -211,46 +203,29 @@ Mat getMat(float id,vec3 p){
   Mat m;m.emission=vec3(0);m.sss=0.0;
   if(id<0.5){
     vec4 bw=biomeWeights(p.xz);
-    // ── 雪原 (Snow) — 積雪+露岩パッチ+氷晶きらめき ──
-    float snowDepth=vnoise(p.xz*0.3+uTime*0.002);
-    float iceSparkle=pow(vnoise(p.xz*40.0),8.0)*0.25;
-    // 露岩パッチ (~25%面積)
-    float rockExpose=smoothstep(0.55,0.68,vnoise(p.xz*1.5));
-    vec3 snowAlb=mix(
-      vec3(0.92+snowDepth*0.02,0.94+snowDepth*0.02,0.97),
-      vec3(0.28,0.24,0.2),rockExpose);
-    float snowRough=mix(0.12+vnoise(p.xz*8.0)*0.06,0.68,rockExpose);
-    float snowMetal=iceSparkle*(1.0-rockExpose);
-    float snowSSS=0.8*(1.0-rockExpose);
-    // ── 砂漠 (Desert) — 高度別グラデーション+風紋影+小石 ──
-    float duneRelH=SAT(p.y*0.6);
-    vec3 sandAlb=mix(vec3(0.42,0.26,0.14),vec3(0.88,0.72,0.42),duneRelH);
+    // ── 雪原 (Lobby) ──
+    float snowN=vnoise(p.xz*2.0)*0.03;
+    vec3 snowAlb=vec3(0.85+snowN,0.88+snowN,0.92+snowN);
+    float snowRough=0.25+vnoise(p.xz*8.0)*0.1;
+    float snowSSS=0.8;
+    // ── 砂漠 (Services) ──
+    float sandN=vnoise(p.xz*6.0)*0.04;
+    vec3 sandAlb=vec3(0.76+sandN,0.62+sandN,0.42+sandN*0.5);
+    // 風紋による異方性roughness
     vec2 wDir=vec2(cos(uTime*0.01),sin(uTime*0.01));
     float ripple=vnoise(vec2(dot(p.xz,wDir)*4.0,dot(p.xz,vec2(-wDir.y,wDir.x))*1.5));
-    sandAlb*=1.0-smoothstep(0.3,0.65,ripple)*0.12;
-    float pebble=step(0.96,vnoise(p.xz*30.0));
-    sandAlb=mix(sandAlb,vec3(0.35,0.3,0.25),pebble*0.4);
-    float sandRough=0.25+ripple*0.3+pebble*0.3;
-    // ── 岩石 (Rock) — 地層+苔/地衣+岩肌テクスチャ ──
-    float strata=abs(fract(p.y*2.5)-0.5)*2.0;
-    vec3 rockAlb=mix(vec3(0.2,0.17,0.14),vec3(0.35,0.3,0.24),smoothstep(0.3,0.5,strata));
-    rockAlb+=vnoise(p.xz*12.0)*0.06;
-    float mossF=smoothstep(1.8,0.2,p.y)*smoothstep(0.42,0.6,vnoise(p.xz*2.0));
-    rockAlb=mix(rockAlb,vec3(0.1,0.22,0.06),mossF*0.55);
-    float rockRough=mix(0.72+vnoise(p.xz*15.0)*0.12,0.5,mossF);
-    float rockMetal=0.04+vnoise(p.xz*20.0)*0.06;
-    // ── 草原 (Grass) — 風揺れ+散花+穂先ハイライト ──
-    float windWave=vnoise(p.xz*0.5+uTime*0.3)*0.5+0.5;
-    float grassVar=vnoise(p.xz*5.0);
-    vec3 grassAlb=mix(vec3(0.07,0.2,0.04),vec3(0.22,0.35,0.07),grassVar*0.55+windWave*0.2);
-    grassAlb+=vec3(0.08,0.1,0.02)*SAT(p.y*0.8)*0.15;
-    float flowerF=step(0.97,hash(floor(p.xz*3.0)));
-    vec3 flowerCol=mix(vec3(0.8,0.2,0.3),vec3(0.9,0.8,0.15),hash(floor(p.xz*3.0)+vec2(17,31)));
-    grassAlb=mix(grassAlb,flowerCol,flowerF*0.45);
-    float grassRough=0.5+vnoise(p.xz*10.0)*0.12-windWave*0.08;
+    float sandRough=0.35+ripple*0.25;
+    // ── 岩石 (Research) ──
+    float rockN=vnoise(p.xz*4.0)*0.06;
+    vec3 rockAlb=vec3(0.22+rockN,0.2+rockN,0.18+rockN);
+    float rockRough=0.65+vnoise(p.xz*12.0)*0.15;
+    // ── 草原 (Stats) ──
+    float grassN=vnoise(p.xz*3.0)*0.05;
+    vec3 grassAlb=vec3(0.15+grassN*0.5,0.35+grassN,0.1+grassN*0.3);
+    float grassRough=0.45+vnoise(p.xz*10.0)*0.1;
     // ── バイオームブレンド ──
     m.albedo=bw.x*snowAlb+bw.y*sandAlb+bw.z*rockAlb+bw.w*grassAlb;
-    m.metallic=bw.x*snowMetal+bw.z*rockMetal+bw.w*0.02;
+    m.metallic=bw.z*0.12; // 岩石のみ微量
     m.roughness=bw.x*snowRough+bw.y*sandRough+bw.z*rockRough+bw.w*grassRough;
     m.sss=bw.x*snowSSS;
     m.emission=vec3(0);
@@ -847,7 +822,7 @@ void main(){
     vec3 n=calcN(p,t);
     vec3 V=-rd;
 
-    // Floor bump (バイオーム別法線摂動 — UE5グレード)
+    // Floor bump (バイオーム別法線摂動)
     if(hit.y<0.5){
       vec4 bw=biomeWeights(p.xz);
       vec2 e=vec2(0.025,0);
@@ -856,24 +831,14 @@ void main(){
       float hx=terrainHeight(p.xz+e);
       float hz=terrainHeight(p.xz+e.yx);
       vec3 tn=normalize(vec3(h0-hx,e.x,h0-hz));
-      // 雪: 滑らかなドリフト皺
-      float snowDrift=(vnoise(p.xz*6.0)-0.5)*bw.x*0.15;
-      tn.x+=snowDrift;tn.z+=snowDrift*0.8;
-      // 砂漠: 指向性風紋法線 (異方性)
-      vec2 wDir=vec2(cos(uTime*0.01),sin(uTime*0.01));
-      float ripN=vnoise(vec2(dot(p.xz,wDir)*8.0,dot(p.xz,vec2(-wDir.y,wDir.x))*2.0))-0.5;
-      tn.x+=wDir.x*ripN*bw.y*0.4;
-      tn.z+=wDir.y*ripN*bw.y*0.4;
-      // 岩石: 鋭い高周波クラック + 地層段差
-      float rockCrack=(vnoise(p.xz*25.0)-0.5)*bw.z*0.5;
-      float strataStep=(vnoise(vec2(0.0,p.y*5.0))-0.5)*bw.z*0.2;
-      tn.x+=rockCrack;tn.z+=rockCrack*0.7+strataStep;
-      // 草原: 草ブレード + 風揺れ (O(1) — sdCylinder代替)
+      // 草原: 草ブレード法線摂動 (O(1) — sdCylinder代替)
       float bladePhase=vnoise(p.xz*15.0)*6.28+uTime*2.0;
-      float windSway=vnoise(p.xz*0.5+uTime*0.3)*0.15;
-      float bladeStr=bw.w*(0.35+windSway);
+      float bladeStr=bw.w*0.35; // 草原の重みに比例
       tn.x+=sin(bladePhase)*bladeStr;
       tn.z+=cos(bladePhase*1.3)*bladeStr;
+      // 岩石: 高周波ディテール
+      float rockDetail=bw.z*(vnoise(p.xz*20.0)-0.5)*0.4;
+      tn.x+=rockDetail;tn.z+=rockDetail*0.8;
       n=normalize(tn);
     }
     Mat mat=getMat(hit.y,p);
