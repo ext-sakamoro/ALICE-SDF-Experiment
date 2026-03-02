@@ -204,6 +204,19 @@ vec3 interiorMap(vec3 p,float scale){
   return col;
 }
 
+// ═══ Voronoi2 (岩石マテリアル + 破壊共用) ═══
+vec3 voronoi2(vec2 p){
+  vec2 n=floor(p);vec2 f=fract(p);
+  float md=8.0,md2=8.0;vec2 mg=vec2(0);
+  for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+    vec2 g=vec2(float(i),float(j));
+    vec2 o=vec2(hash(n+g),hash(n+g+vec2(31.3,17.7)));
+    vec2 r=g+o-f;float d=dot(r,r);
+    float sel=step(d,md);md2=mix(md2,md,sel);md=mix(md,d,sel);mg=mix(mg,n+g,sel);
+  }
+  return vec3(sqrt(md),sqrt(md2)-sqrt(md),hash(mg));
+}
+
 // ═══ Materials ═══
 struct Mat{vec3 albedo;float metallic;float roughness;vec3 emission;float sss;};
 
@@ -375,17 +388,6 @@ Mat getMat(float id,vec3 p){
 }
 
 // ═══ Physical Destruction (Law D-2) ═══
-vec3 voronoi2(vec2 p){
-  vec2 n=floor(p);vec2 f=fract(p);
-  float md=8.0,md2=8.0;vec2 mg=vec2(0);
-  for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
-    vec2 g=vec2(float(i),float(j));
-    vec2 o=vec2(hash(n+g),hash(n+g+vec2(31.3,17.7)));
-    vec2 r=g+o-f;float d=dot(r,r);
-    float sel=step(d,md);md2=mix(md2,md,sel);md=mix(md,d,sel);mg=mix(mg,n+g,sel);
-  }
-  return vec3(sqrt(md),sqrt(md2)-sqrt(md),hash(mg));
-}
 float destructionAt(vec3 p){
   // Expanding wavefront model: destruction ring propagates outward
   float waveR=uImpactRing*0.5;           // wavefront radius (0→40 at peak)
