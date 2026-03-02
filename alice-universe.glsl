@@ -640,7 +640,7 @@ float map_lite(vec3 p){
 vec3 calcN(vec3 p,float dist){float e=max(0.0002,dist*0.0003);vec2 k=vec2(e,-e);return normalize(k.xyy*map(p+k.xyy).x+k.yyx*map(p+k.yyx).x+k.yxy*map(p+k.yxy).x+k.xxx*map(p+k.xxx).x);}
 float ao(vec3 p,vec3 n){float o=0.0,w=1.0;for(int i=0;i<6;i++){float h=0.008+0.12*float(i);o+=(h-map_lite(p+n*h))*w;w*=0.58;}return SAT(1.0-4.0*o);}
 // Shadow Proxy: 2 SDF evaluations (map_lite使用)
-float shadowProxy(vec3 p,vec3 n,vec3 lDir){float h1=0.1,h2=0.4;float d1=map_lite(p+lDir*h1);float d2=map_lite(p+lDir*h2);float occ=SAT((d1/h1+d2/h2)*0.5);float NdL=max(dot(n,lDir),0.0);return occ*NdL;}
+float shadowProxy(vec3 p,vec3 n,vec3 lDir){float h1=0.15,h2=0.5;float d1=map_lite(p+lDir*h1);float d2=map_lite(p+lDir*h2);float occ=SAT((d1/h1+d2/h2)*0.5);float NdL=max(dot(n,lDir),0.0);return occ*NdL;}
 
 // ═══ Rain Occlusion (upward SDF trace, map_lite使用) ═══
 float rainOcc(vec3 p){
@@ -888,8 +888,8 @@ void main(){
       float mb0=vnoise(p.xz*40.0);
       float mbGx=(mb0-vnoise((p.xz+e)*40.0))*microF;
       float mbGz=(mb0-vnoise((p.xz+e.yx)*40.0))*microF;
-      // 雪8(氷粒スパークル) 砂6(砂粒起伏) 岩10(ザラつき) 草5(土質感)
-      float mbStr=bw.x*8.0+bw.y*6.0+bw.z*10.0+bw.w*5.0*(1.0-gProx);
+      // 雪0.8(氷粒スパークル) 砂0.6(砂粒起伏) 岩1.0(ザラつき) 草0.5(土質感)
+      float mbStr=bw.x*0.8+bw.y*0.6+bw.z*1.0+bw.w*0.5*(1.0-gProx);
       tn.x+=mbGx*mbStr;
       tn.z+=mbGz*mbStr;
       n=normalize(tn);
