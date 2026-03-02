@@ -421,8 +421,13 @@ function frame(time){
     updateEnvironment(dt);
     cam.pos[0]=Math.max(-60,Math.min(60,cam.pos[0]));
     cam.pos[2]=Math.max(-60,Math.min(60,cam.pos[2]));
+    // ドローン型EMA: 地形を下回った時だけ滑らかに押し上げ
     var minH=jsTerrainHeight(cam.pos[0],cam.pos[2])+EYE_HEIGHT;
-    cam.pos[1]=Math.max(minH,Math.min(30,cam.pos[1]));
+    if(cam.pos[1]<minH){
+      var emaA=1-Math.exp(-dt*6.0); // 時定数 ~0.17秒
+      cam.pos[1]+=(minH-cam.pos[1])*emaA;
+    }
+    cam.pos[1]=Math.min(30,cam.pos[1]);
     gl.uniform2f(uResL,canvas.width,canvas.height);
     gl.uniform1f(uTimeL,stGameTime);
     gl.uniform1f(uMaxDistL,stMaxDist);

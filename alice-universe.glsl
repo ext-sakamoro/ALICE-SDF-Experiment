@@ -836,7 +836,7 @@ void main(){
     float bm2=step(16.5,hit.y)*step(hit.y,17.5);
     float bm3=step(13.5,hit.y)*step(hit.y,15.5);
     bloomAcc+=bm1*aBloom(hit.x,vec3(0.3,0.5,1.0),0.012,8.0)+bm2*aBloom(hit.x,vec3(0.4,0.6,1.2),0.008,10.0)+bm3*aBloom(hit.x,blackbody(6000.0),0.015,6.0);
-    if(hit.x<max(0.0005,t*0.001)||t>uMaxDist)break;t+=hit.x*0.6;
+    if(hit.x<max(0.0005,t*0.0015)||t>uMaxDist)break;t+=hit.x*0.65;
   }
 
   vec3 col=sky+bloomAcc;
@@ -911,7 +911,7 @@ void main(){
     // Lightning boost
     keyCol+=vec3(2.0,2.2,2.8)*uLightning;
 
-    float keyShadow=shadowProxy(p+n*0.03,n,keyDir); // Normal Offset増: シャドウアクネ封殺
+    float keyShadow=shadowProxy(p+n*0.08,n,keyDir); // Normal Offset増: シャドウアクネ封殺
 
     vec3 fillDir=normalize(vec3(-0.35,0.35,-0.6));
     vec3 fillCol=mix(vec3(0.03,0.04,0.08),vec3(0.18,0.25,0.45),dayF);
