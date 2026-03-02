@@ -521,33 +521,11 @@ vec2 map(vec3 p){
   return vec2(d,id);
 }
 
-// ═══ map_lite — AO/Shadow/Rain用軽量SDF (Orb/Ring/Meteor/Debris省略) ═══
+// ═══ map_lite — AO/Shadow/Rain用軽量SDF (最小構成) ═══
 float map_lite(vec3 p){
   float d=p.y;
-  // Lobby base
-  float cbase=sdRoundBox(p-vec3(0,0.22,0),vec3(7.5,0.22,7.5),0.1);
-  d=min(d,cbase);
-  // Services base + towers
-  float sbase=sdRoundBox(p-vec3(0,0.14,-35.0),vec3(11.5,0.14,4.5),0.08);
-  d=min(d,sbase);
-  for(int i=0;i<4;i++){float x=float(i)*4.0-6.0;float h=5.2+sin(float(i)*1.5)*0.4;
-    d=min(d,sdRoundBox(p-vec3(x,h*0.5,-35.0),vec3(1.55,h*0.5,0.28),0.12));}
-  // Research wall + base
-  float res=sdRoundBox(p-vec3(35.0,4.8,0),vec3(0.35,4.8,8.5),0.15);
-  d=min(d,res);
-  float rbase=sdRoundBox(p-vec3(35.0,0.14,0),vec3(2.8,0.14,10.5),0.08);
-  d=min(d,rbase);
-  // Stats base + pedestals
-  float stbase=sdRoundBox(p-vec3(0,0.14,35.0),vec3(11.5,0.14,4.5),0.08);
-  d=min(d,stbase);
-  for(int i=0;i<4;i++){float x=float(i)*4.0-6.0;
-    d=min(d,sdRoundBox(p-vec3(x,1.6,35.0),vec3(1.05,1.6,1.05),0.1));}
-  // Contact base
-  float pbase=sdRoundBox(p-vec3(-35.0,0.14,0),vec3(6.5,0.14,6.5),0.08);
-  d=min(d,pbase);
-  // Glass dome
-  float gls=sdSphere(p-vec3(0,12.5,0),3.0);gls=max(gls,-sdSphere(p-vec3(0,12.5,0),2.75));gls=max(gls,-(p.y-12.5));
-  d=min(d,gls);
+  d=min(d,sdRoundBox(p-vec3(0,0.22,0),vec3(7.5,0.22,7.5),0.1));
+  d=min(d,sdSphere(p-vec3(0,12.5,0),3.0));
   return d;
 }
 
