@@ -29,22 +29,34 @@ float vnoise3(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);float n00=mix
 float fbm(vec2 p){float v=0.0,a=0.5;mat2 r=mat2(0.8,0.6,-0.6,0.8);for(int i=0;i<3;i++){v+=a*vnoise(p);p=r*p*2.1;a*=0.48;}return v;}
 float fbm3(vec3 p){float v=0.0,a=0.5;for(int i=0;i<3;i++){v+=a*vnoise3(p);p=p*2.15+vec3(1.7,3.2,2.8);a*=0.45;}return v;}
 
-// ═══ Biome System (真理の地形法) ═══
-// バイオーム重み: ガウシアン距離ベース連続重み + 正規化 (step/floor禁止)
-// 0=雪(Lobby), 1=砂漠(Services), 2=岩石(Research), 3=草原(Stats)
+// ═══ Biome System (真理の地形法 — ズートピア型ラジアル配置) ═══
+// 角度ベースセクター + 中央ハブ融合 (step/floor完全不使用)
+// vec4: x=雪(NE 12-3時), y=砂漠(SW 6-9時), z=岩石(SE 3-6時), w=草原(NW 9-12時)
+float angleDist(float a,float b){
+  float d=a-b;
+  d=d-TAU*floor((d+PI)/TAU); // wrap to -PI..PI
+  return abs(d);
+}
 vec4 biomeWeights(vec2 xz){
-  // エリア中心
-  float dSnow=length(xz)*0.04;              // Lobby中央
-  float dDesert=length(xz-vec2(0,-35))*0.04; // Services
-  float dRock=length(xz-vec2(35,0))*0.04;    // Research
-  float dGrass=length(xz-vec2(0,35))*0.04;   // Stats
-  // ガウシアン重み (sigma=1.2)
-  float wS=exp(-dSnow*dSnow*0.7);
-  float wD=exp(-dDesert*dDesert*0.7);
-  float wR=exp(-dRock*dRock*0.7);
-  float wG=exp(-dGrass*dGrass*0.7);
+  float dist=length(xz);
+  float ang=atan(xz.y,xz.x); // -PI..PI
+  // セクター中心角 (上から時計回り)
+  // NE(12-3時)=+PI/4, SE(3-6時)=-PI/4, SW(6-9時)=-3PI/4, NW(9-12時)=+3PI/4
+  float aSnow=PI*0.25;
+  float aRock=-PI*0.25;
+  float aDesert=-PI*0.75;
+  float aGrass=PI*0.75;
+  // 角度距離のガウシアン重み (シャープネス=3.0 → 90°セクターにフィット)
+  float wS=exp(-angleDist(ang,aSnow)*angleDist(ang,aSnow)*3.0);
+  float wR=exp(-angleDist(ang,aRock)*angleDist(ang,aRock)*3.0);
+  float wD=exp(-angleDist(ang,aDesert)*angleDist(ang,aDesert)*3.0);
+  float wG=exp(-angleDist(ang,aGrass)*angleDist(ang,aGrass)*3.0);
+  // 中央ハブ: 半径8m以内は全バイオーム均等融合
+  float hub=smoothstep(12.0,5.0,dist);
+  wS=mix(wS,1.0,hub);wR=mix(wR,1.0,hub);
+  wD=mix(wD,1.0,hub);wG=mix(wG,1.0,hub);
   // 正規化
-  float invSum=1.0/(wS+wD+wR+wG+0.001);
+  float invSum=1.0/(wS+wR+wD+wG+0.001);
   return vec4(wS,wD,wR,wG)*invSum;
 }
 

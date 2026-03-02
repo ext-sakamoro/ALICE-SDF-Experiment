@@ -75,16 +75,20 @@ function jsVoronoiErosion(x,z){
   var edge=Math.sqrt(md2)-Math.sqrt(md);
   return Math.sqrt(md)*0.6-edge*0.8;
 }
-// JS biomeWeights
+// JS biomeWeights (ズートピア型ラジアル — GLSL同一ロジック)
+function jsAngleDist(a,b){var d=a-b;d=d-Math.PI*2*Math.floor((d+Math.PI)/(Math.PI*2));return Math.abs(d);}
 function jsBiomeWeights(x,z){
-  var dS=Math.sqrt(x*x+z*z)*0.04;
-  var dD=Math.sqrt(x*x+(z+35)*(z+35))*0.04;
-  var dR=Math.sqrt((x-35)*(x-35)+z*z)*0.04;
-  var dG=Math.sqrt(x*x+(z-35)*(z-35))*0.04;
-  var wS=Math.exp(-dS*dS*0.7);
-  var wD=Math.exp(-dD*dD*0.7);
-  var wR=Math.exp(-dR*dR*0.7);
-  var wG=Math.exp(-dG*dG*0.7);
+  var dist=Math.sqrt(x*x+z*z);
+  var ang=Math.atan2(z,x);
+  var aSnow=PI*0.25,aRock=-PI*0.25,aDesert=-PI*0.75,aGrass=PI*0.75;
+  var dS=jsAngleDist(ang,aSnow),dR=jsAngleDist(ang,aRock);
+  var dD=jsAngleDist(ang,aDesert),dG=jsAngleDist(ang,aGrass);
+  var wS=Math.exp(-dS*dS*3),wR=Math.exp(-dR*dR*3);
+  var wD=Math.exp(-dD*dD*3),wG=Math.exp(-dG*dG*3);
+  // 中央ハブ融合
+  var hub=dist<5?1:dist<12?(12-dist)/7:0;
+  wS=wS+(1-wS)*hub;wR=wR+(1-wR)*hub;
+  wD=wD+(1-wD)*hub;wG=wG+(1-wG)*hub;
   var inv=1/(wS+wD+wR+wG+0.001);
   return{s:wS*inv,d:wD*inv,r:wR*inv,g:wG*inv};
 }
