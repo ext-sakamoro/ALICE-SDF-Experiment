@@ -884,11 +884,16 @@ void main(){
       float perpD1=dot(gp1,bp1); // sdCylinder直交距離 (ブレード幅)
       float alongD1=dot(gp1,bd1); // sdCylinder方向距離 (ブレード長さ)
       float bx1=exp(-perpD1*perpD1*600.0)*smoothstep(0.4,0.0,abs(alongD1));
-      float gw1=sin(uTime*2.5+hash(gc1+100.0)*TAU);
-      // 法線: ブレード直交方向 + 風しなり
+      // ALICE-Physics ForceField::Directional 準拠: 統一風場
+      // wD は砂漠セクションで定義済み (統一風向ベクトル)
+      float gust1=sin(dot(p.xz,wD)*0.5-uTime*3.0)*0.5+0.5; // ガスト波: 風向に伝播
+      float turbN1=vnoise(p.xz*0.3+vec2(uTime*0.08,uTime*0.06)); // 微細乱流
+      float respond1=mix(1.4,0.8,hash(gc1+100.0)); // Rope準拠: ブレード毎剛性差
+      float windBend1=(0.25+gust1*0.35+turbN1*0.1)*respond1;
+      // 法線: sdCylinder構造×0.7 + 風向×windBend (ピン拘束モデル)
       vec2 bn1=bp1*sign(perpD1+0.0001);
-      float nx1=(bn1.x+gw1*0.08*bd1.x)*bx1;
-      float nz1=(bn1.y+gw1*0.06*bd1.y)*bx1;
+      float nx1=(bn1.x*0.7+wD.x*windBend1)*bx1;
+      float nz1=(bn1.y*0.7+wD.y*windBend1)*bx1;
       // スケール2: 大タフト (8本/m)
       vec2 gc2=floor(p.xz*8.0);
       vec2 gp2=fract(p.xz*8.0)-0.5-vec2(hash(gc2+200.0)-0.5,hash(gc2+250.0)-0.5)*0.3;
@@ -898,10 +903,13 @@ void main(){
       float perpD2=dot(gp2,bp2);
       float alongD2=dot(gp2,bd2);
       float bx2=exp(-perpD2*perpD2*200.0)*smoothstep(0.45,0.0,abs(alongD2));
-      float gw2=sin(uTime*1.8+hash(gc2+300.0)*TAU);
+      float gust2=sin(dot(p.xz,wD)*0.3-uTime*2.2)*0.5+0.5; // 大スケールガスト
+      float turbN2=vnoise(p.xz*0.15+vec2(uTime*0.06,uTime*0.04));
+      float respond2=mix(1.2,0.6,hash(gc2+300.0));
+      float windBend2=(0.3+gust2*0.4+turbN2*0.12)*respond2;
       vec2 bn2=bp2*sign(perpD2+0.0001);
-      float nx2=(bn2.x+gw2*0.12*bd2.x)*bx2;
-      float nz2=(bn2.y+gw2*0.08*bd2.y)*bx2;
+      float nx2=(bn2.x*0.7+wD.x*windBend2)*bx2;
+      float nz2=(bn2.y*0.7+wD.y*windBend2)*bx2;
       tn.x+=bw.w*(nx1*5.0+nx2*3.5);
       tn.z+=bw.w*(nz1*5.0+nz2*3.5);
       n=normalize(tn);
