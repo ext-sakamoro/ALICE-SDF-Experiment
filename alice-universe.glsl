@@ -883,13 +883,13 @@ void main(){
       float gWind=sin(hash(gc+100.0)*TAU)*0.5;
       tn.x+=bw.w*(gOff.x+gWind*0.12)*gProx*3.5*grassFade;
       tn.z+=bw.w*(gOff.y+gWind*0.08)*gProx*3.5*grassFade;
-      // ── 共通マイクロバンプ (vnoise×40 1周波数共用、12→3 vnoise) ──
-      float microF=smoothstep(15.0,5.0,t); // 距離LODフェードアウト
+      // ── 共通マイクロバンプ (固定サンプリング幅、除算廃止) ──
+      vec2 eMB=vec2(0.01,0.0); // 距離非依存の固定幅
+      float microF=smoothstep(15.0,2.0,t); // 遠景フェードアウト
       float mb0=vnoise(p.xz*40.0);
-      // e.xで割ることで正しい傾き（勾配）を出し、極小の強度係数を掛ける
-      float mbGx=(vnoise((p.xz+e)*40.0)-mb0)/e.x*microF;
-      float mbGz=(vnoise((p.xz+e.yx)*40.0)-mb0)/e.x*microF;
-      // 強度を極小化: ハイライトの暴走を封殺
+      float mbGx=(vnoise((p.xz+eMB)*40.0)-mb0)*microF;
+      float mbGz=(vnoise((p.xz+eMB.yx)*40.0)-mb0)*microF;
+      // 極小強度: 光が当たった時だけキラッと光る
       float mbStr=bw.x*0.05+bw.y*0.04+bw.z*0.06+bw.w*0.03*(1.0-gProx);
       tn.x+=mbGx*mbStr;
       tn.z+=mbGz*mbStr;
@@ -912,7 +912,7 @@ void main(){
     // Lightning boost
     keyCol+=vec3(2.0,2.2,2.8)*uLightning;
 
-    float keyShadow=shadowProxy(p+n*0.08,n,keyDir); // Normal Offset増: シャドウアクネ封殺
+    float keyShadow=shadowProxy(p+n*0.12,n,keyDir); // シャドウバイアス: セルフシャドウ黒斑点根絶
 
     vec3 fillDir=normalize(vec3(-0.35,0.35,-0.6));
     vec3 fillCol=mix(vec3(0.03,0.04,0.08),vec3(0.18,0.25,0.45),dayF);
