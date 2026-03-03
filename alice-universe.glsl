@@ -446,7 +446,7 @@ vec2 map(vec3 p){
   float id=0.0;
 
   float dcz=length(p.xz)-16.0;
-  if(dcz<d){
+  if(dcz<d&&dcz<8.0){
     // Energy Orb — Lobby
     vec3 ecp=p-vec3(0,5.2,0);
     float eOrb=sdSphere(ecp,2.2)+disp(ecp*2.0+uTime*0.3)*0.08;
@@ -498,7 +498,7 @@ vec2 map(vec3 p){
   }
 
   float dnz=abs(p.z+35.0)-18.0;
-  if(dnz<d){
+  if(dnz<d&&dnz<8.0){
     if(uShatter>0.005){
     float sDst=destructionAt(p);
     for(int i=0;i<4;i++){float x=float(i)*4.0-6.0;float h=5.2+sin(float(i)*1.5)*0.4;
@@ -522,7 +522,7 @@ vec2 map(vec3 p){
   }
 
   float dez=abs(p.x-35.0)-15.0;
-  if(dez<d){
+  if(dez<d&&dez<8.0){
     float res=sdRoundBox(p-vec3(35.0,4.8,0),vec3(0.35,4.8,8.5),0.15);
     float gy=sdGyroid(p-vec3(35.0,4.8,0),1.3,0.12);
     float gyWall=max(res,-gy);
@@ -549,7 +549,7 @@ vec2 map(vec3 p){
   }
 
   float dsz=abs(p.z-35.0)-15.0;
-  if(dsz<d){
+  if(dsz<d&&dsz<8.0){
     if(uShatter>0.005){
     float tDst=destructionAt(p);
     for(int i=0;i<4;i++){float x=float(i)*4.0-6.0;
@@ -575,7 +575,7 @@ vec2 map(vec3 p){
   }
 
   float dwz=abs(p.x+35.0)-12.0;
-  if(dwz<d){
+  if(dwz<d&&dwz<8.0){
     vec3 cep=p-vec3(-35,5.2,0);
     float ceOrb=sdSphere(cep,1.8)+disp(cep*2.2+uTime*0.38)*0.06;
     {float s=step(ceOrb,d);d=mix(d,ceOrb,s);id=mix(id,1.0,s);}
@@ -999,7 +999,7 @@ void main(){
     if(hit.y<0.5){
       vec3 reflDir=reflect(rd,n);
       float rt=0.0;vec2 rh;
-      for(int i=0;i<16;i++){rh=map(p+reflDir*rt);if(rh.x<0.001||rt>45.0)break;rt+=rh.x;}
+      for(int i=0;i<16;i++){rh.x=map_lite(p+reflDir*rt);rh.y=0.0;if(rh.x<0.001||rt>45.0)break;rt+=rh.x;}
       vec3 reflCol=skyColor(reflDir,sunDir,moonDir,dayF);
       if(rt<45.0){
         vec3 rp=p+reflDir*rt;vec3 rn=calcN(rp,t+rt);Mat rm=getMat(rh.y,rp);
