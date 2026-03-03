@@ -228,9 +228,9 @@ Mat getMat(float id,vec3 p){
     float snowN=vnoise(p.xz*2.0)*0.03;
     float snowIce=vnoise(p.xz*12.0)*0.02;
     vec3 snowAlb=vec3(0.85+snowN,0.88+snowN+snowIce,0.92+snowN+snowIce*2.0);
-    // 氷面=極低ラフネス(鏡面)、積雪面=やや粗い
+    // 新雪=0.7(拡散)、凍結面=0.1(鏡面)、ごく一部のみ氷
     float iceF=smoothstep(0.4,0.6,vnoise(p.xz*6.0)); // 氷/雪の混在
-    float snowRough=mix(0.04,0.35,iceF)+vnoise(p.xz*8.0)*0.05;
+    float snowRough=mix(0.1,0.7,iceF)+vnoise(p.xz*8.0)*0.05;
     float snowSSS=0.8;
     // ── 砂漠 (Services): 風ベクトル場異方性反射 ──
     float sandN=vnoise(p.xz*6.0)*0.04;
@@ -242,8 +242,8 @@ Mat getMat(float id,vec3 p){
     vec3 sandAlb=vec3(0.76+sandN,0.62+sandN,0.42+sandN*0.5);
     float sandH=SAT(p.y*0.5+0.5);
     sandAlb=mix(sandAlb,sandAlb*vec3(1.1,0.95,0.85),sandH);
-    // 風紋の谷=滑らか(砂が圧縮)、稜線=極粗(砂粒露出)
-    float sandRough=0.15+ripPar*0.45+ripPer*0.2;
+    // 乾燥砂: ベース0.6以上、ふんわりとした光の拡散
+    float sandRough=0.6+ripPar*0.2+ripPer*0.1;
     // ── 岩石 (Research): Voronoi侵食SDF勾配→地層色+亀裂 ──
     float rockN=vnoise(p.xz*4.0)*0.06;
     vec3 vr=voronoi2(p.xz*0.8);
@@ -258,8 +258,8 @@ Mat getMat(float id,vec3 p){
     vec3 grassDry=vec3(0.3+grassN,0.28+grassN*0.5,0.12);
     float grassTip=SAT(vnoise(p.xz*8.0)*1.5-0.3);
     vec3 grassAlb=mix(grassGreen,grassDry,grassTip*0.35);
-    // 草先端=蝋質キューティクル(低)、根元/土=粗い
-    float grassRough=mix(0.6,0.18,grassTip)+vnoise(p.xz*10.0)*0.08;
+    // 草原マット化: 0.85ベース、テカリ完全消去
+    float grassRough=0.85+vnoise(p.xz*10.0)*0.08;
     // ── バイオームブレンド ──
     m.albedo=bw.x*snowAlb+bw.y*sandAlb+bw.z*rockAlb+bw.w*grassAlb;
     m.metallic=bw.z*0.12;
@@ -883,6 +883,9 @@ void main(){
       float gWind=sin(hash(gc+100.0)*TAU)*0.5;
       tn.x+=bw.w*(gOff.x+gWind*0.12)*gProx*3.5*grassFade;
       tn.z+=bw.w*(gOff.y+gWind*0.08)*gProx*3.5*grassFade;
+      // 微細な縦ストライプ: 草の茎の集まりに見える陰影
+      float grassStripe=vnoise(vec2(p.x*20.0,p.z*3.0))*0.15*grassFade;
+      tn.x+=bw.w*grassStripe;
       // ── 共通マイクロバンプ (固定サンプリング幅、除算廃止) ──
       vec2 eMB=vec2(0.01,0.0); // 距離非依存の固定幅
       float microF=smoothstep(15.0,2.0,t); // 遠景フェードアウト
