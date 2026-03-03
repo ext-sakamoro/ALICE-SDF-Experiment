@@ -270,7 +270,7 @@ Mat getMat(float id,vec3 p){
     float pathGlow=max(smoothstep(1.0,0.0,abs(p.x)),smoothstep(1.0,0.0,abs(p.z)));
     float pathPulse=sin(length(p.xz)*0.3-uTime*1.5)*0.3+0.7;
     m.emission+=vec3(0.04,0.25,0.55)*pathGlow*0.15*pathPulse;
-    // Rain: 全バイオーム共通
+    // Rain: 全バイオーム共通の濡れ
     m.roughness*=mix(1.0,0.04,uWxRain*0.55);
     if(uWxRain>0.01){
       float splash=0.0;
@@ -287,6 +287,11 @@ Mat getMat(float id,vec3 p){
       splash=min(splash,1.0)*uWxRain;
       m.roughness=mix(m.roughness,0.01,splash*0.6);
       m.emission+=vec3(0.15,0.25,0.45)*splash*0.25;
+      // ── 岩場の水たまり (Puddles): Voronoi凹み+低地で鏡面化 ──
+      float puddleDepth=smoothstep(0.12,0.0,vr.y)*smoothstep(0.3,0.0,p.y);
+      float puddle=bw.z*puddleDepth*uWxRain;
+      m.roughness=mix(m.roughness,0.01,puddle);
+      m.albedo=mix(m.albedo,m.albedo*0.6,puddle); // 水面は暗く
     }
   }else if(id<1.5){
     // Energy Orb — branchless zone color via step masks
@@ -897,6 +902,12 @@ void main(){
       tn.x+=mbGx*mbStr;
       tn.z+=mbGz*mbStr;
       n=normalize(tn);
+      // ── 岩場水たまり法線: 雨天時、Voronoi凹みで法線を真上に書き換え ──
+      if(uWxRain>0.1){
+        vec3 vrN=voronoi2(p.xz*0.8);
+        float puddleN=bw.z*smoothstep(0.12,0.0,vrN.y)*smoothstep(0.3,0.0,p.y)*uWxRain;
+        n=normalize(mix(n,vec3(0,1,0),puddleN));
+      }
     }
     Mat mat=getMat(hit.y,p);
     rocc=1.0;if(uWxRain>0.01)rocc=rainOcc(p);
@@ -1073,18 +1084,31 @@ void main(){
   // Impact flash
   col+=vec3(5.0,3.5,2.0)*max(uImpact-0.6,0.0)*3.0;
 
-  // Rain streaks — attenuate by depth (close surface = less air volume = less rain)
-  // and by rocc (under roof = no rain)
+  // Rain streaks — バイオーム別降下物切り替え
   if(uWxRain>0.01){
+    vec4 camBW=biomeWeights(ro.xz); // カメラ位置のバイオーム重み
     float rainDepth=smoothstep(3.0,35.0,t)*rocc;
-    // Looking down at floor → rain streaks fade (rain hits surface, not air)
     rainDepth*=smoothstep(-0.5,-0.1,rd.y);
     vec2 ruv=gl_FragCoord.xy/uRes;
+    // ── 通常の雨 (岩/草) ──
+    float rainF=camBW.z+camBW.w; // 岩+草で雨
     vec2 rq=ruv*vec2(25.0,7.0);rq.y+=uTime*4.0;rq.x+=uTime*0.3;
     float r1=smoothstep(0.04,0.0,abs(fract(rq).x-0.5))*fract(rq).y*step(0.9,hash(floor(rq)));
     rq=ruv*vec2(50.0,12.0);rq.y+=uTime*5.5;rq.x-=uTime*0.15;
     float r2=smoothstep(0.025,0.0,abs(fract(rq).x-0.5))*fract(rq).y*step(0.92,hash(floor(rq)+300.0));
-    col+=vec3(0.25,0.3,0.4)*(r1*0.3+r2*0.15)*uWxRain*rainDepth;
+    col+=vec3(0.25,0.3,0.4)*(r1*0.3+r2*0.15)*uWxRain*rainDepth*rainF;
+    // ── 雪原: 雪 (落下速度1/5、横揺れ、純白) ──
+    vec2 sq=ruv*vec2(18.0,5.0);sq.y+=uTime*0.8;sq.x+=sin(uTime*0.6+ruv.y*4.0)*0.3;
+    float s1=smoothstep(0.06,0.0,abs(fract(sq).x-0.5))*fract(sq).y*step(0.88,hash(floor(sq)+500.0));
+    sq=ruv*vec2(30.0,8.0);sq.y+=uTime*1.1;sq.x-=sin(uTime*0.4+ruv.y*3.0)*0.2;
+    float s2=smoothstep(0.04,0.0,abs(fract(sq).x-0.5))*fract(sq).y*step(0.9,hash(floor(sq)+700.0));
+    col+=vec3(0.9,0.92,1.0)*(s1*0.25+s2*0.12)*uWxRain*rainDepth*camBW.x;
+    // ── 砂漠: 砂塵 (下→上、黄色味) ──
+    vec2 dq=ruv*vec2(35.0,6.0);dq.y-=uTime*1.5;dq.x+=uTime*0.8;
+    float d1=smoothstep(0.05,0.0,abs(fract(dq).x-0.5))*step(0.87,hash(floor(dq)+900.0));
+    dq=ruv*vec2(20.0,4.0);dq.y-=uTime*2.0;dq.x-=uTime*0.5;
+    float d2=smoothstep(0.07,0.0,abs(fract(dq).x-0.5))*step(0.9,hash(floor(dq)+1100.0));
+    col+=vec3(0.7,0.55,0.3)*(d1*0.2+d2*0.1)*uWxRain*rainDepth*camBW.y;
   }
   col+=vec3(0.5,0.55,0.7)*uLightning*0.6;
 
