@@ -242,10 +242,10 @@ var dayPhase=0.3;  // start at morning
 
 // ── Weather System ───────────────────────────────────
 var WEATHER=[
-  {name:'Clear',fog:0,rain:0,dur:55},
-  {name:'Fog',fog:1,rain:0,dur:35},
-  {name:'Rain',fog:0.3,rain:1,dur:40},
-  {name:'Storm',fog:0.4,rain:1,dur:25}
+  {name:'Clear',fog:0,rain:0,dur:25},
+  {name:'Fog',fog:1,rain:0,dur:15},
+  {name:'Rain',fog:0.3,rain:1,dur:20},
+  {name:'Storm',fog:0.4,rain:1,dur:12}
 ];
 var wxIdx=0,wxTimer=0;
 var wxFog=0,wxFogTarget=0;
