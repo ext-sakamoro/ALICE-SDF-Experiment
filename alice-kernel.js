@@ -393,9 +393,10 @@ var uShakeL=gl.getUniformLocation(prog,'uShake');
 var uMaxDistL=gl.getUniformLocation(prog,'uMaxDist');
 var uTimeDilationL=gl.getUniformLocation(prog,'uTimeDilation');
 
-// ── Path Ω: Spacetime Elasticity (RENDER_SCALE=1.0 always) ──
+// ── Path Ω: Spacetime Elasticity + Dynamic Render Scale ──
 var ftEMA=16,ftAlpha=0.15;
 var stMaxDist=95.0,stTimeDilation=1.0,stGameTime=-1;
+var stRenderScale=1.0,prevRenderScale=1.0;
 function pathOmegaSpacetime(dtMs){
   ftEMA+=(dtMs-ftEMA)*ftAlpha;
   // Light-speed throttling: shrink max ray distance when GPU heavy
@@ -404,6 +405,12 @@ function pathOmegaSpacetime(dtMs){
   // Time dilation: heavy frames → slow-motion effect
   if(ftEMA>22)stTimeDilation=Math.max(0.25,stTimeDilation-0.03);
   else if(ftEMA<16)stTimeDilation=Math.min(1.0,stTimeDilation+0.02);
+  // Dynamic render scale: 0.5〜1.0 で負荷適応
+  if(ftEMA>24)stRenderScale=Math.max(0.5,stRenderScale-0.02);
+  else if(ftEMA<14)stRenderScale=Math.min(1.0,stRenderScale+0.01);
+  if(Math.abs(stRenderScale-prevRenderScale)>0.005){
+    RENDER_SCALE=stRenderScale;resize();prevRenderScale=stRenderScale;
+  }
 }
 
 var lastTime=0;
