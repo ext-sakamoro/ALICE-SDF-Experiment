@@ -228,9 +228,9 @@ Mat getMat(float id,vec3 p){
     float snowN=vnoise(p.xz*2.0)*0.03;
     float snowIce=vnoise(p.xz*12.0)*0.02;
     vec3 snowAlb=vec3(0.85+snowN,0.88+snowN+snowIce,0.92+snowN+snowIce*2.0);
-    // 新雪=0.7(拡散)、凍結面=0.1(鏡面)、ごく一部のみ氷
-    float iceF=smoothstep(0.4,0.6,vnoise(p.xz*6.0)); // 氷/雪の混在
-    float snowRough=mix(0.1,0.7,iceF)+vnoise(p.xz*8.0)*0.05;
+    // 氷の面積を極小化、ベースを新雪(0.85)のマットな質感に
+    float iceF=smoothstep(0.75,0.9,vnoise(p.xz*6.0)); // ごく一部の凍結面のみ
+    float snowRough=mix(0.85,0.2,iceF)+vnoise(p.xz*8.0)*0.05;
     float snowSSS=0.8;
     // ── 砂漠 (Services): 風ベクトル場異方性反射 ──
     float sandN=vnoise(p.xz*6.0)*0.04;
