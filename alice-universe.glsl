@@ -883,8 +883,8 @@ void main(){
       float gWind=sin(hash(gc+100.0)*TAU)*0.5;
       tn.x+=bw.w*(gOff.x+gWind*0.12)*gProx*3.5*grassFade;
       tn.z+=bw.w*(gOff.y+gWind*0.08)*gProx*3.5*grassFade;
-      // 微細な縦ストライプ: 草の茎の集まりに見える陰影
-      float grassStripe=vnoise(vec2(p.x*20.0,p.z*3.0))*0.15*grassFade;
+      // 異方性fbmストライプ: 無数の草の茎が密集する光学的錯覚
+      float grassStripe=fbm(vec2(p.x*20.0,p.z*3.0))*0.15*grassFade;
       tn.x+=bw.w*grassStripe;
       // ── 共通マイクロバンプ (固定サンプリング幅、除算廃止) ──
       vec2 eMB=vec2(0.01,0.0); // 距離非依存の固定幅
