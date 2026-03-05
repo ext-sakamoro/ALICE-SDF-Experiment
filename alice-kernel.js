@@ -242,10 +242,10 @@ var dayPhase=0.3;  // start at morning
 
 // ── Weather System ───────────────────────────────────
 var WEATHER=[
-  {name:'Clear',fog:0,rain:0,dur:25},
-  {name:'Fog',fog:1,rain:0,dur:15},
-  {name:'Rain',fog:0.3,rain:1,dur:20},
-  {name:'Storm',fog:0.4,rain:1,dur:12}
+  {name:'Clear',fog:0,rain:0,dur:12},
+  {name:'Fog',fog:1,rain:0,dur:8},
+  {name:'Rain',fog:0.3,rain:1,dur:10},
+  {name:'Storm',fog:0.4,rain:1,dur:6}
 ];
 var wxIdx=0,wxTimer=0;
 var wxFog=0,wxFogTarget=0;
@@ -307,15 +307,15 @@ function updateEnvironment(dt){
     wxRainTarget=WEATHER[wxIdx].rain;
   }
   // Smooth lerp
-  wxFog+=(wxFogTarget-wxFog)*Math.min(dt*0.4,1);
-  wxRain+=(wxRainTarget-wxRain)*Math.min(dt*0.3,1);
+  wxFog+=(wxFogTarget-wxFog)*Math.min(dt*0.8,1);
+  wxRain+=(wxRainTarget-wxRain)*Math.min(dt*0.6,1);
 
   // Lightning during storm
   if(WEATHER[wxIdx].name==='Storm'){
     lightningTimer-=dt;
     if(lightningTimer<=0){
       lightning=1.0;
-      lightningTimer=2+Math.random()*5;
+      lightningTimer=1+Math.random()*3;
     }
   }
   lightning*=Math.max(0,1-dt*10); // fast decay
