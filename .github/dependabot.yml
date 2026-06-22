@@ -1,0 +1,16 @@
+# Dependabot 設定 (feedback_dependabot_major_bump_initial_wave 準拠)
+# 注: HTML/JS のみ (alice-kernel.js, index.html, alice-universe.glsl)
+# package.json 不在のため npm 不要 github-actions のみ管理
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
